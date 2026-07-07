@@ -1,0 +1,33 @@
+{
+  "name": "morphex",
+  "version": "0.1.0",
+  "description": "Morphex — FHE-based DeFi protocol with confidential tokens, swaps, and lending",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat deploy --network localhost",
+    "deploy:sepolia": "hardhat deploy --network sepolia",
+    "node": "hardhat node",
+    "clean": "hardhat clean",
+    "lint:sol": "solhint 'contracts/**/*.sol'",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@fhevm/hardhat-plugin": "^0.4.2",
+    "hardhat": "^2.22.0",
+    "hardhat-deploy": "^0.14.0",
+    "solhint": "^5.0.0",
+    "typescript": "^5.5.0",
+    "ts-node": "^10.9.0"
+  },
+  "dependencies": {
+    "@fhevm/solidity": "^0.11.1",
+    "@openzeppelin/confidential-contracts": "^0.5.1",
+    "@openzeppelin/contracts": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
