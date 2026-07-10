@@ -1,77 +1,77 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BSD-3-Clause-Clear
 pragma solidity ^0.8.24;
 
-import {einput, euint64, ebool} from "@fhevm/solidity/lib/FHE.sol";
+import {euint64, ebool, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 
 /// @title IConfidentialToken
-/// @notice Interface for the Morphex confidential fungible token (ERC-7984 compatible).
-/// @dev Balances and transfer amounts are FHE-encrypted. Public reads return ciphertext
-/// handles — only ACL-authorized addresses can decrypt via the KMS gateway.
+/// @notice Confidential fungible token interface (ERC-7984 style). Balances/allowances are encrypted euint64 handles.
 interface IConfidentialToken {
-    // ──────────────────────────────────────────────
-    //  Events
-    // ──────────────────────────────────────────────
+    // ------------------------------------------------------------------
+    // Events
+    // ------------------------------------------------------------------
 
-    /// @notice Emitted on every transfer. Amount is intentionally omitted (encrypted).
+    /// @dev No amounts in events — only that a transfer/approval happened.
     event Transfer(address indexed from, address indexed to);
-
-    /// @notice Emitted when an encrypted allowance is set.
     event Approval(address indexed owner, address indexed spender);
 
-    /// @notice Emitted when tokens are minted.
-    event Mint(address indexed to);
+    // ------------------------------------------------------------------
+    // Views
+    // ------------------------------------------------------------------
 
-    // ──────────────────────────────────────────────
-    //  Public metadata (plaintext)
-    // ──────────────────────────────────────────────
+    /// @notice Encrypted balance handle for `account`.
+    function confidentialBalanceOf(address account) external view returns (euint64);
 
-    function name() external view returns (string memory);
-    function symbol() external view returns (string memory);
-    function decimals() external view returns (uint8);
+    /// @notice Encrypted allowance handle for `owner` -> `spender`.
+    function confidentialAllowance(address owner, address spender) external view returns (euint64);
 
-    // ──────────────────────────────────────────────
-    //  Encrypted state reads
-    // ──────────────────────────────────────────────
+    // ------------------------------------------------------------------
+    // Standard confidential ERC-style entry points (client-encrypted input)
+    // ------------------------------------------------------------------
 
-    /// @notice Returns the encrypted balance handle for `account`.
-    /// @dev Only `account` (or ACL-allowed addresses) can decrypt the underlying value
-    /// through the KMS gateway.
-    function balanceOf(address account) external view returns (euint64);
-
-    /// @notice Returns the encrypted total supply handle.
-    function totalSupply() external view returns (euint64);
-
-    /// @notice Returns the encrypted allowance handle for `owner` → `spender`.
-    function allowance(address owner, address spender) external view returns (euint64);
-
-    // ──────────────────────────────────────────────
-    //  Encrypted state writes
-    // ──────────────────────────────────────────────
-
-    /// @notice Transfer `encryptedAmount` tokens to `to`.
-    /// @param to Recipient address.
-    /// @param encryptedAmount Client-encrypted amount (einput handle).
-    /// @param inputProof ZK proof binding the ciphertext to the caller.
-    /// @return success Always true — insufficient balance resolves to a no-op
-    /// (no revert, to prevent info leakage).
-    function transfer(
+    /// @notice Transfer using a client-encrypted amount + proof.
+    function confidentialTransfer(
         address to,
-        einput encryptedAmount,
+        externalEuint64 encryptedAmount,
         bytes calldata inputProof
-    ) external returns (bool success);
+    ) external returns (bool);
 
-    /// @notice Approve `spender` to transfer up to `encryptedAmount` on your behalf.
-    function approve(
+    /// @notice Transfer using an existing euint64 handle.
+    function confidentialTransfer(address to, euint64 amount) external returns (bool);
+
+    /// @notice Approve using a client-encrypted amount + proof.
+    function confidentialApprove(
         address spender,
-        einput encryptedAmount,
+        externalEuint64 encryptedAmount,
         bytes calldata inputProof
-    ) external returns (bool success);
+    ) external returns (bool);
 
-    /// @notice Transfer `encryptedAmount` from `from` to `to`, consuming allowance.
-    function transferFrom(
+    /// @notice Approve using an existing euint64 handle.
+    function confidentialApprove(address spender, euint64 amount) external returns (bool);
+
+    /// @notice TransferFrom using a client-encrypted amount + proof.
+    function confidentialTransferFrom(
         address from,
         address to,
-        einput encryptedAmount,
+        externalEuint64 encryptedAmount,
         bytes calldata inputProof
-    ) external returns (bool success);
+    ) external returns (bool);
+
+    /// @notice TransferFrom using an existing euint64 handle.
+    function confidentialTransferFrom(address from, address to, euint64 amount) external returns (bool);
+
+    // ------------------------------------------------------------------
+    // Composability hooks (contract-to-contract, no client-side proof needed)
+    // ------------------------------------------------------------------
+
+    /// @notice Contract-to-contract transfer via handle (proofs can't be reused across contracts).
+    /// @return newAmount actual amount transferred (may be clamped), returned so caller can update its own accounting.
+    function transferHandle(address from, address to, euint64 amount) external returns (euint64 newAmount);
+
+    /// @notice Contract-to-contract transferFrom via handle, respecting `from`'s encrypted allowance.
+    function transferFromHandle(
+        address spender,
+        address from,
+        address to,
+        euint64 amount
+    ) external returns (euint64 newAmount);
 }
