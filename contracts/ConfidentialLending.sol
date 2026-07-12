@@ -3,34 +3,21 @@ pragma solidity ^0.8.24;
 
 import {FHE, euint64, euint128, ebool, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
-import {IConfidentialLending} from "./interfaces/IConfidentialLending.sol";
-import {IConfidentialToken} from "./interfaces/IConfidentialToken.sol";
+import {ConfidentialToken} from "./ConfidentialToken.sol";
 
-/// @title ConfidentialLending
-/// @notice Single collateral asset / single debt asset lending pool with encrypted positions.
-///
-/// @dev Design notes:
-///      - Prices are plaintext/public (an oracle price is already public info); only each account's
-///        collateral and debt amounts are encrypted.
-///      - No encrypted/encrypted division, so the health check is cross-multiplied instead of divided:
-///
-///            collateral * collateralPrice * 10_000  >=  debt * debtPrice * collateralRatioBps
-///
-///      - Borrow/withdraw/liquidate all clamp to a no-op via `FHE.select` on failure instead of
-///        reverting, so tx success/failure never reveals how close an account is to its limit —
-///        bots can't scan for liquidatable accounts, only try and silently fail.
-///      - Deliberately minimal: single pair, no interest accrual, to keep the encrypted math small
-///        and auditable. Interest can be layered on later with the same multiplication-only approach.
-contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
-    IConfidentialToken public immutable collateralToken;
-    IConfidentialToken public immutable debtToken;
+contract ConfidentialLending is ZamaEthereumConfig {
+    event CollateralDeposited(address indexed account);
+    event CollateralWithdrawn(address indexed account);
+    event Borrowed(address indexed account);
+    event Repaid(address indexed account);
+    event LiquidationAttempted(address indexed account, address indexed liquidator);
 
-    /// @dev Plaintext oracle prices, scaled by 1e6. Owner-settable for now; swap for a real feed
-    ///      (with staleness checks) in production.
+    ConfidentialToken public immutable collateralToken;
+    ConfidentialToken public immutable debtToken;
+
     uint64 public collateralPrice = 1e6;
     uint64 public debtPrice = 1e6;
 
-    /// @notice Minimum collateralization ratio, in basis points (15000 = 150%).
     uint16 public constant COLLATERAL_RATIO_BPS = 15000;
     uint16 private constant BPS_DENOMINATOR = 10000;
 
@@ -42,21 +29,26 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
     mapping(address => euint64) private _debt;
     mapping(address => bool) private _debtInitialized;
 
+    bool private _locked;
+
     modifier onlyOwner() {
         require(msg.sender == owner, "ConfidentialLending: not owner");
         _;
     }
 
-    constructor(address collateralToken_, address debtToken_) {
-        require(collateralToken_ != address(0) && debtToken_ != address(0), "ConfidentialLending: zero address");
-        collateralToken = IConfidentialToken(collateralToken_);
-        debtToken = IConfidentialToken(debtToken_);
-        owner = msg.sender;
+    modifier nonReentrant() {
+        require(!_locked, "ConfidentialLending: reentrant call");
+        _locked = true;
+        _;
+        _locked = false;
     }
 
-    // ------------------------------------------------------------------
-    // Admin (testnet convenience — replace with a real oracle in production)
-    // ------------------------------------------------------------------
+    constructor(address collateralToken_, address debtToken_) {
+        require(collateralToken_ != address(0) && debtToken_ != address(0), "ConfidentialLending: zero address");
+        collateralToken = ConfidentialToken(collateralToken_);
+        debtToken = ConfidentialToken(debtToken_);
+        owner = msg.sender;
+    }
 
     function setPrices(uint64 newCollateralPrice, uint64 newDebtPrice) external onlyOwner {
         require(newCollateralPrice > 0 && newDebtPrice > 0, "ConfidentialLending: zero price");
@@ -64,26 +56,23 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         debtPrice = newDebtPrice;
     }
 
-    // ------------------------------------------------------------------
-    // Views
-    // ------------------------------------------------------------------
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "ConfidentialLending: zero address");
+        owner = newOwner;
+    }
 
-    function collateralBalanceOf(address account) public view override returns (euint64) {
+    function collateralBalanceOf(address account) public view returns (euint64) {
         return _collateralInitialized[account] ? _collateral[account] : euint64.wrap(0);
     }
 
-    function debtBalanceOf(address account) public view override returns (euint64) {
+    function debtBalanceOf(address account) public view returns (euint64) {
         return _debtInitialized[account] ? _debt[account] : euint64.wrap(0);
     }
-
-    // ------------------------------------------------------------------
-    // Collateral
-    // ------------------------------------------------------------------
 
     function depositCollateral(
         externalEuint64 encryptedAmount,
         bytes calldata inputProof
-    ) external override returns (bool) {
+    ) external nonReentrant returns (bool) {
         euint64 amount = FHE.fromExternal(encryptedAmount, inputProof);
 
         FHE.allowTransient(amount, address(collateralToken));
@@ -94,12 +83,10 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         return true;
     }
 
-    /// @notice Withdraw collateral, clamped so the position stays healthy and never exceeds the
-    ///         account's balance. Silently no-ops (moves zero) on either failure.
     function withdrawCollateral(
         externalEuint64 encryptedAmount,
         bytes calldata inputProof
-    ) external override returns (bool) {
+    ) external nonReentrant returns (bool) {
         euint64 requested = FHE.fromExternal(encryptedAmount, inputProof);
         euint64 currentCollateral = collateralBalanceOf(msg.sender);
         euint64 currentDebt = debtBalanceOf(msg.sender);
@@ -120,13 +107,7 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         return true;
     }
 
-    // ------------------------------------------------------------------
-    // Borrow / Repay
-    // ------------------------------------------------------------------
-
-    /// @notice Borrow against posted collateral. Clamps to zero if it would breach
-    ///         `COLLATERAL_RATIO_BPS`, or if the pool lacks liquidity.
-    function borrow(externalEuint64 encryptedAmount, bytes calldata inputProof) external override returns (bool) {
+    function borrow(externalEuint64 encryptedAmount, bytes calldata inputProof) external nonReentrant returns (bool) {
         euint64 requested = FHE.fromExternal(encryptedAmount, inputProof);
         euint64 currentCollateral = collateralBalanceOf(msg.sender);
         euint64 currentDebt = debtBalanceOf(msg.sender);
@@ -149,11 +130,10 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         return true;
     }
 
-    function repay(externalEuint64 encryptedAmount, bytes calldata inputProof) external override returns (bool) {
+    function repay(externalEuint64 encryptedAmount, bytes calldata inputProof) external nonReentrant returns (bool) {
         euint64 requested = FHE.fromExternal(encryptedAmount, inputProof);
         euint64 currentDebt = debtBalanceOf(msg.sender);
 
-        // Clamp to outstanding debt so debt can't go negative.
         ebool withinDebt = FHE.le(requested, currentDebt);
         euint64 repayAmount = FHE.select(withinDebt, requested, currentDebt);
 
@@ -165,38 +145,28 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         return true;
     }
 
-    // ------------------------------------------------------------------
-    // Liquidation
-    // ------------------------------------------------------------------
-
-    /// @notice Anyone can attempt to liquidate anyone. Tokens only actually move if `account` is
-    ///         genuinely undercollateralized; otherwise everything clamps to zero and the call
-    ///         reveals nothing about `account`'s real position.
     function liquidate(
         address account,
         externalEuint64 encryptedRepayAmount,
         bytes calldata inputProof
-    ) external override returns (bool) {
+    ) external nonReentrant returns (bool) {
         euint64 requestedRepay = FHE.fromExternal(encryptedRepayAmount, inputProof);
 
         euint64 accountCollateral = collateralBalanceOf(account);
         euint64 accountDebt = debtBalanceOf(account);
 
-        ebool isUndercollateralized = FHE.not(_isHealthy(accountCollateral, accountDebt));
-        ebool repayWithinDebt = FHE.le(requestedRepay, accountDebt);
-        ebool ok = FHE.and(isUndercollateralized, repayWithinDebt);
+        ebool ok = FHE.and(
+            FHE.not(_isHealthy(accountCollateral, accountDebt)),
+            FHE.le(requestedRepay, accountDebt)
+        );
 
         euint64 repayAmount = FHE.select(ok, requestedRepay, FHE.asEuint64(0));
 
-        // Dividing by a plaintext scalar (the public oracle price) is fine — only
-        // encrypted-by-encrypted division is unavailable.
-        euint128 repayValue128 = FHE.mul(FHE.asEuint128(repayAmount), uint128(debtPrice));
-        euint64 seizeAmount = FHE.asEuint64(FHE.div(repayValue128, uint128(collateralPrice)));
-        seizeAmount = FHE.select(FHE.le(seizeAmount, accountCollateral), seizeAmount, accountCollateral);
-        seizeAmount = FHE.select(ok, seizeAmount, FHE.asEuint64(0));
-
         FHE.allowTransient(repayAmount, address(debtToken));
         euint64 movedRepay = debtToken.transferFromHandle(address(this), msg.sender, address(this), repayAmount);
+
+        euint64 rawSeize = FHE.asEuint64(FHE.div(FHE.mul(FHE.asEuint128(movedRepay), uint128(debtPrice)), uint128(collateralPrice)));
+        euint64 seizeAmount = FHE.select(FHE.le(rawSeize, accountCollateral), rawSeize, accountCollateral);
 
         _setDebt(account, FHE.sub(accountDebt, movedRepay));
         _setCollateral(account, FHE.sub(accountCollateral, seizeAmount));
@@ -208,12 +178,6 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         return true;
     }
 
-    // ------------------------------------------------------------------
-    // Internal
-    // ------------------------------------------------------------------
-
-    /// @dev collateral * collateralPrice * BPS_DENOMINATOR >= debt * debtPrice * COLLATERAL_RATIO_BPS
-    ///      Cross-multiplied to avoid division; widened to euint128 to avoid overflow.
     function _isHealthy(euint64 collateralAmount, euint64 debtAmount) private returns (ebool) {
         euint128 collateralValue = FHE.mul(
             FHE.asEuint128(collateralAmount),

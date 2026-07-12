@@ -3,7 +3,7 @@ import { DeployFunction } from "hardhat-deploy/types";
 
 const TOKEN_NAME = "Morphex";
 const TOKEN_SYMBOL = "MORPH";
-const INITIAL_SUPPLY = BigInt(1_000_000); // 1M tokens (will be scaled by decimals on frontend)
+const INITIAL_SUPPLY = BigInt(1_000_000); // 1M tokens (6 decimals per ERC-7984 spec)
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
@@ -17,22 +17,22 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   console.log(`  Deployer: ${deployer}`);
   console.log();
 
-  // 1. Deploy the ConfidentialToken contract
-  const result = await deploy("ConfidentialToken", {
+  // 1. Deploy the MorphexToken contract
+  const result = await deploy("MorphexToken", {
     from: deployer,
     args: [TOKEN_NAME, TOKEN_SYMBOL, deployer],
     log: true,
     waitConfirmations: hre.network.name === "hardhat" ? 1 : 5,
   });
 
-  console.log(`  ✓ ConfidentialToken deployed at: ${result.address}`);
+  console.log(`  ✓ MorphexToken deployed at: ${result.address}`);
 
   // 2. Mint initial supply to deployer
   if (result.newlyDeployed) {
     console.log(`  Minting ${INITIAL_SUPPLY.toLocaleString()} MORPH to deployer...`);
 
     await execute(
-      "ConfidentialToken",
+      "MorphexToken",
       { from: deployer, log: true },
       "mint",
       deployer,
@@ -48,5 +48,5 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 };
 
-func.tags = ["ConfidentialToken"];
+func.tags = ["MorphexToken"];
 export default func;
