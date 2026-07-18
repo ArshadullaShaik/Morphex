@@ -3,44 +3,39 @@ pragma solidity ^0.8.24;
 
 import {FHE, euint64, euint128, ebool, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
 import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
-import {IConfidentialLending} from "./interfaces/IConfidentialLending.sol";
-import {IConfidentialToken} from "./interfaces/IConfidentialToken.sol";
-import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
+import {ConfidentialToken} from "./ConfidentialToken.sol";
 
-/// @title ConfidentialLending
-/// @notice Single collateral / single debt asset lending pool with encrypted positions.
-/// @dev No encrypted/encrypted division - health check is cross-multiplied instead of ratio'd:
-///      collateral * price * 10_000 >= debt * price * collateralRatioBps.
-///      All failure paths clamp to a no-op via FHE.select instead of reverting, so a failed
-///      borrow/withdraw/liquidation leaks nothing about the account's real position.
-contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
-    IConfidentialToken public immutable collateralToken;
-    IConfidentialToken public immutable debtToken;
+/// @notice Overcollateralized lending against a single ConfidentialToken pair.
+/// Collateral/debt positions are encrypted; health checks compare cross-
+/// multiplied values in euint128 rather than dividing, since fhEVM has no
+/// encrypted/encrypted division. Prices are plaintext (values, not existence
+/// of a position, are what need hiding here) and owner-governed with a
+/// staleness guard rather than a pluggable oracle interface, to keep this to
+/// exactly the contracts the protocol needs.
+contract ConfidentialLending is ZamaEthereumConfig {
+    event CollateralDeposited(address indexed account);
+    event CollateralWithdrawn(address indexed account);
+    event Borrowed(address indexed account);
+    event Repaid(address indexed account);
+    event LiquidationAttempted(address indexed account, address indexed liquidator);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event CollateralRatioUpdated(uint16 newRatioBps);
+    event PricesUpdated(uint64 collateralPrice, uint64 debtPrice);
 
-    // ------------------------------------------------------------------
-    // Pricing - pluggable oracle, manual value is only a fallback
-    // ------------------------------------------------------------------
+    ConfidentialToken public immutable collateralToken;
+    ConfidentialToken public immutable debtToken;
 
-    IPriceOracle public collateralPriceOracle;
-    IPriceOracle public debtPriceOracle;
+    // Both prices are scaled 1e6, matching ConfidentialToken's fixed 6 decimals.
+    // No default baked in — every deployment must pass its own starting
+    // prices and ratio into the constructor, since a hardcoded 1:1 price or
+    // a hardcoded ratio would silently be wrong for any real asset pair.
+    uint64 public collateralPrice;
+    uint64 public debtPrice;
+    uint256 public lastPriceUpdate;
+    uint256 public constant PRICE_STALENESS_THRESHOLD = 1 hours;
 
-    /// @dev Fallback prices (1e6-scaled), used only if no oracle is set or its price is stale.
-    uint64 public manualCollateralPrice;
-    uint64 public manualDebtPrice;
-
-    /// @notice Max oracle price age before falling back to the manual price. Owner-settable.
-    uint256 public priceStalenessThreshold = 1 hours;
-
-    // ------------------------------------------------------------------
-    // Collateral ratio - owner-governed, bounds-checked, not a constant
-    // ------------------------------------------------------------------
-
-    /// @notice Minimum collateralization ratio in bps (15000 = 150%). Owner-adjustable within bounds.
-    uint16 public collateralRatioBps = 15000;
-
-    uint16 public constant MIN_COLLATERAL_RATIO_BPS = 11000; // 110% floor - below this is insolvent
-    uint16 public constant MAX_COLLATERAL_RATIO_BPS = 50000; // 500% ceiling - sanity cap
-
+    uint16 public collateralRatioBps;
+    uint16 public constant MIN_COLLATERAL_RATIO_BPS = 11000; // 110% floor — owner can't set the protocol to near-zero safety margin
     uint16 private constant BPS_DENOMINATOR = 10000;
 
     address public owner;
@@ -51,101 +46,86 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
     mapping(address => euint64) private _debt;
     mapping(address => bool) private _debtInitialized;
 
-    event CollateralRatioUpdated(uint16 oldRatioBps, uint16 newRatioBps);
-    event PriceOraclesUpdated(address collateralOracle, address debtOracle);
-    event ManualPricesUpdated(uint64 collateralPrice, uint64 debtPrice);
-    event PriceStalenessThresholdUpdated(uint256 newThreshold);
+    bool private _locked;
 
     modifier onlyOwner() {
         require(msg.sender == owner, "ConfidentialLending: not owner");
         _;
     }
 
+    modifier nonReentrant() {
+        require(!_locked, "ConfidentialLending: reentrant call");
+        _locked = true;
+        _;
+        _locked = false;
+    }
+
+    // Gates the actions where an inaccurate price directly determines
+    // solvency (borrowing more than you should, withdrawing collateral you
+    // need, or a liquidation seizing the wrong amount). Deposits and repays
+    // only ever improve health regardless of price, so they're left ungated.
+    modifier pricesFresh() {
+        require(block.timestamp - lastPriceUpdate <= PRICE_STALENESS_THRESHOLD, "ConfidentialLending: stale price");
+        _;
+    }
+
     constructor(
         address collateralToken_,
         address debtToken_,
-        uint64 initialManualCollateralPrice,
-        uint64 initialManualDebtPrice
+        uint64 initialCollateralPrice,
+        uint64 initialDebtPrice,
+        uint16 initialCollateralRatioBps
     ) {
         require(collateralToken_ != address(0) && debtToken_ != address(0), "ConfidentialLending: zero address");
-        require(
-            initialManualCollateralPrice > 0 && initialManualDebtPrice > 0,
-            "ConfidentialLending: zero initial price"
-        );
-        collateralToken = IConfidentialToken(collateralToken_);
-        debtToken = IConfidentialToken(debtToken_);
-        manualCollateralPrice = initialManualCollateralPrice;
-        manualDebtPrice = initialManualDebtPrice;
+        require(initialCollateralPrice > 0 && initialDebtPrice > 0, "ConfidentialLending: zero price");
+        require(initialCollateralRatioBps >= MIN_COLLATERAL_RATIO_BPS, "ConfidentialLending: ratio below floor");
+
+        collateralToken = ConfidentialToken(collateralToken_);
+        debtToken = ConfidentialToken(debtToken_);
         owner = msg.sender;
+
+        collateralPrice = initialCollateralPrice;
+        debtPrice = initialDebtPrice;
+        collateralRatioBps = initialCollateralRatioBps;
+        lastPriceUpdate = block.timestamp;
     }
 
-    // ------------------------------------------------------------------
-    // Admin
-    // ------------------------------------------------------------------
-
-    /// @notice Set oracle addresses. Pass address(0) to fall back to the manual price for that asset.
-    function setPriceOracles(address newCollateralOracle, address newDebtOracle) external onlyOwner {
-        collateralPriceOracle = IPriceOracle(newCollateralOracle);
-        debtPriceOracle = IPriceOracle(newDebtOracle);
-        emit PriceOraclesUpdated(newCollateralOracle, newDebtOracle);
-    }
-
-    /// @notice Set fallback prices, used when no oracle is set or the oracle price is stale.
-    function setManualPrices(uint64 newCollateralPrice, uint64 newDebtPrice) external onlyOwner {
+    function setPrices(uint64 newCollateralPrice, uint64 newDebtPrice) external onlyOwner {
         require(newCollateralPrice > 0 && newDebtPrice > 0, "ConfidentialLending: zero price");
-        manualCollateralPrice = newCollateralPrice;
-        manualDebtPrice = newDebtPrice;
-        emit ManualPricesUpdated(newCollateralPrice, newDebtPrice);
+        collateralPrice = newCollateralPrice;
+        debtPrice = newDebtPrice;
+        lastPriceUpdate = block.timestamp;
+        emit PricesUpdated(newCollateralPrice, newDebtPrice);
     }
 
-    /// @notice Set how long an oracle price stays valid before falling back to the manual price.
-    function setPriceStalenessThreshold(uint256 newThreshold) external onlyOwner {
-        require(newThreshold > 0, "ConfidentialLending: zero threshold");
-        priceStalenessThreshold = newThreshold;
-        emit PriceStalenessThresholdUpdated(newThreshold);
-    }
-
-    /// @notice Update the min collateral ratio, bounded to [MIN_COLLATERAL_RATIO_BPS, MAX_COLLATERAL_RATIO_BPS].
-    function setCollateralRatioBps(uint16 newRatioBps) external onlyOwner {
-        require(
-            newRatioBps >= MIN_COLLATERAL_RATIO_BPS && newRatioBps <= MAX_COLLATERAL_RATIO_BPS,
-            "ConfidentialLending: ratio out of bounds"
-        );
-        uint16 old = collateralRatioBps;
+    function setCollateralRatio(uint16 newRatioBps) external onlyOwner {
+        require(newRatioBps >= MIN_COLLATERAL_RATIO_BPS, "ConfidentialLending: ratio below floor");
         collateralRatioBps = newRatioBps;
-        emit CollateralRatioUpdated(old, newRatioBps);
+        emit CollateralRatioUpdated(newRatioBps);
     }
 
-    // ------------------------------------------------------------------
-    // Views
-    // ------------------------------------------------------------------
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "ConfidentialLending: zero address");
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
+    }
 
-    function collateralBalanceOf(address account) public view override returns (euint64) {
+    function pricesAreFresh() external view returns (bool) {
+        return block.timestamp - lastPriceUpdate <= PRICE_STALENESS_THRESHOLD;
+    }
+
+    function collateralBalanceOf(address account) public view returns (euint64) {
         return _collateralInitialized[account] ? _collateral[account] : euint64.wrap(0);
     }
 
-    function debtBalanceOf(address account) public view override returns (euint64) {
+    function debtBalanceOf(address account) public view returns (euint64) {
         return _debtInitialized[account] ? _debt[account] : euint64.wrap(0);
     }
-
-    /// @notice Current effective collateral price (oracle if fresh, else manual fallback).
-    function currentCollateralPrice() public view returns (uint64) {
-        return _resolvePrice(collateralPriceOracle, manualCollateralPrice);
-    }
-
-    /// @notice Current effective debt price (oracle if fresh, else manual fallback).
-    function currentDebtPrice() public view returns (uint64) {
-        return _resolvePrice(debtPriceOracle, manualDebtPrice);
-    }
-
-    // ------------------------------------------------------------------
-    // Collateral
-    // ------------------------------------------------------------------
 
     function depositCollateral(
         externalEuint64 encryptedAmount,
         bytes calldata inputProof
-    ) external override returns (bool) {
+    ) external nonReentrant returns (bool) {
         euint64 amount = FHE.fromExternal(encryptedAmount, inputProof);
 
         FHE.allowTransient(amount, address(collateralToken));
@@ -156,11 +136,10 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         return true;
     }
 
-    /// @notice Withdraw collateral. Clamps to zero if it would exceed balance or break the health check.
     function withdrawCollateral(
         externalEuint64 encryptedAmount,
         bytes calldata inputProof
-    ) external override returns (bool) {
+    ) external nonReentrant pricesFresh returns (bool) {
         euint64 requested = FHE.fromExternal(encryptedAmount, inputProof);
         euint64 currentCollateral = collateralBalanceOf(msg.sender);
         euint64 currentDebt = debtBalanceOf(msg.sender);
@@ -181,12 +160,10 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         return true;
     }
 
-    // ------------------------------------------------------------------
-    // Borrow / Repay
-    // ------------------------------------------------------------------
-
-    /// @notice Borrow against collateral. Clamps to zero if it would breach collateralRatioBps or exceed pool liquidity.
-    function borrow(externalEuint64 encryptedAmount, bytes calldata inputProof) external override returns (bool) {
+    function borrow(
+        externalEuint64 encryptedAmount,
+        bytes calldata inputProof
+    ) external nonReentrant pricesFresh returns (bool) {
         euint64 requested = FHE.fromExternal(encryptedAmount, inputProof);
         euint64 currentCollateral = collateralBalanceOf(msg.sender);
         euint64 currentDebt = debtBalanceOf(msg.sender);
@@ -209,8 +186,7 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         return true;
     }
 
-    /// @notice Repay debt. Clamps to outstanding debt so it can never go negative.
-    function repay(externalEuint64 encryptedAmount, bytes calldata inputProof) external override returns (bool) {
+    function repay(externalEuint64 encryptedAmount, bytes calldata inputProof) external nonReentrant returns (bool) {
         euint64 requested = FHE.fromExternal(encryptedAmount, inputProof);
         euint64 currentDebt = debtBalanceOf(msg.sender);
 
@@ -225,39 +201,30 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         return true;
     }
 
-    // ------------------------------------------------------------------
-    // Liquidation
-    // ------------------------------------------------------------------
-
-    /// @notice Attempt to liquidate `account`. Only moves tokens if the position is actually
-    ///         undercollateralized; otherwise everything clamps to zero and nothing leaks.
     function liquidate(
         address account,
         externalEuint64 encryptedRepayAmount,
         bytes calldata inputProof
-    ) external override returns (bool) {
+    ) external nonReentrant pricesFresh returns (bool) {
         euint64 requestedRepay = FHE.fromExternal(encryptedRepayAmount, inputProof);
 
         euint64 accountCollateral = collateralBalanceOf(account);
         euint64 accountDebt = debtBalanceOf(account);
 
-        ebool isUndercollateralized = FHE.not(_isHealthy(accountCollateral, accountDebt));
-        ebool repayWithinDebt = FHE.le(requestedRepay, accountDebt);
-        ebool ok = FHE.and(isUndercollateralized, repayWithinDebt);
+        ebool ok = FHE.and(FHE.not(_isHealthy(accountCollateral, accountDebt)), FHE.le(requestedRepay, accountDebt));
 
         euint64 repayAmount = FHE.select(ok, requestedRepay, FHE.asEuint64(0));
 
-        // seize = repay * debtPrice / collateralPrice, clamped to account's actual collateral.
-        // Dividing an encrypted value by a plaintext scalar is supported (only enc/enc div isn't).
-        uint64 debtPriceNow = currentDebtPrice();
-        uint64 collateralPriceNow = currentCollateralPrice();
-        euint128 repayValue128 = FHE.mul(FHE.asEuint128(repayAmount), uint128(debtPriceNow));
-        euint64 seizeAmount = FHE.asEuint64(FHE.div(repayValue128, uint128(collateralPriceNow)));
-        seizeAmount = FHE.select(FHE.le(seizeAmount, accountCollateral), seizeAmount, accountCollateral);
-        seizeAmount = FHE.select(ok, seizeAmount, FHE.asEuint64(0));
-
         FHE.allowTransient(repayAmount, address(debtToken));
         euint64 movedRepay = debtToken.transferFromHandle(address(this), msg.sender, address(this), repayAmount);
+
+        // Convert the repaid debt value into collateral units. This divides
+        // an encrypted value by a PLAINTEXT scalar (collateralPrice), which
+        // fhEVM supports natively — it is not encrypted/encrypted division.
+        euint64 rawSeize = FHE.asEuint64(
+            FHE.div(FHE.mul(FHE.asEuint128(movedRepay), uint128(debtPrice)), uint128(collateralPrice))
+        );
+        euint64 seizeAmount = FHE.select(FHE.le(rawSeize, accountCollateral), rawSeize, accountCollateral);
 
         _setDebt(account, FHE.sub(accountDebt, movedRepay));
         _setCollateral(account, FHE.sub(accountCollateral, seizeAmount));
@@ -269,36 +236,16 @@ contract ConfidentialLending is IConfidentialLending, ZamaEthereumConfig {
         return true;
     }
 
-    // ------------------------------------------------------------------
-    // Internal
-    // ------------------------------------------------------------------
-
-    /// @dev collateral * price * 10000 >= debt * price * collateralRatioBps. Cross-multiplied, no division.
-    ///      Prices and ratio are read fresh each call, never hardcoded.
+    // collateralValue >= debtValue * collateralRatioBps / BPS_DENOMINATOR,
+    // cross-multiplied so neither side needs to divide an encrypted value by
+    // another encrypted value.
     function _isHealthy(euint64 collateralAmount, euint64 debtAmount) private returns (ebool) {
-        uint64 collateralPriceNow = currentCollateralPrice();
-        uint64 debtPriceNow = currentDebtPrice();
         euint128 collateralValue = FHE.mul(
             FHE.asEuint128(collateralAmount),
-            uint128(uint256(collateralPriceNow) * BPS_DENOMINATOR)
+            uint128(uint256(collateralPrice) * BPS_DENOMINATOR)
         );
-        euint128 debtValue = FHE.mul(
-            FHE.asEuint128(debtAmount),
-            uint128(uint256(debtPriceNow) * collateralRatioBps)
-        );
+        euint128 debtValue = FHE.mul(FHE.asEuint128(debtAmount), uint128(uint256(debtPrice) * collateralRatioBps));
         return FHE.ge(collateralValue, debtValue);
-    }
-
-    /// @dev Oracle price if set and fresh, else manual fallback. Reverts only if neither is valid.
-    function _resolvePrice(IPriceOracle oracle, uint64 manualPrice) private view returns (uint64) {
-        if (address(oracle) != address(0)) {
-            (uint64 price, uint256 updatedAt) = oracle.latestPrice();
-            if (price > 0 && block.timestamp - updatedAt <= priceStalenessThreshold) {
-                return price;
-            }
-        }
-        require(manualPrice > 0, "ConfidentialLending: no valid price");
-        return manualPrice;
     }
 
     function _setCollateral(address account, euint64 newBalance) private {
