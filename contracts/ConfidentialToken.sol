@@ -7,6 +7,7 @@ import {ZamaEthereumConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 contract ConfidentialToken is ZamaEthereumConfig {
     event Transfer(address indexed from, address indexed to);
     event Approval(address indexed owner, address indexed spender);
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     string public name;
     string public symbol;
@@ -19,10 +20,21 @@ contract ConfidentialToken is ZamaEthereumConfig {
     mapping(address => bool) private _balanceInitialized;
     mapping(address => mapping(address => bool)) private _allowanceInitialized;
 
+    modifier onlyOwner() {
+        require(msg.sender == owner, "ConfidentialToken: not owner");
+        _;
+    }
+
     constructor(string memory name_, string memory symbol_) {
         name = name_;
         symbol = symbol_;
         owner = msg.sender;
+    }
+
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "ConfidentialToken: zero address");
+        emit OwnershipTransferred(owner, newOwner);
+        owner = newOwner;
     }
 
     function confidentialBalanceOf(address account) public view returns (euint64) {
@@ -39,8 +51,10 @@ contract ConfidentialToken is ZamaEthereumConfig {
         return _allowances[holder][spender];
     }
 
-    function mint(address to, externalEuint64 encryptedAmount, bytes calldata inputProof) external returns (bool) {
-        require(msg.sender == owner, "ConfidentialToken: not owner");
+    // Owner-gated mint. Kept simple on purpose: this token is the shared
+    // settlement asset for ConfidentialSwap / ConfidentialLending, not a
+    // public-sale token, so supply issuance stays admin-controlled.
+    function mint(address to, externalEuint64 encryptedAmount, bytes calldata inputProof) external onlyOwner returns (bool) {
         euint64 amount = FHE.fromExternal(encryptedAmount, inputProof);
         _credit(to, amount);
         emit Transfer(address(0), to);
@@ -96,6 +110,9 @@ contract ConfidentialToken is ZamaEthereumConfig {
         return true;
     }
 
+    // Handle-based hooks used by trusted protocol contracts (ConfidentialSwap,
+    // ConfidentialLending) to move funds they already hold approval/handles for,
+    // without needing a fresh external ciphertext + proof on every internal hop.
     function transferHandle(address from, address to, euint64 amount) external returns (euint64) {
         FHE.isSenderAllowed(amount);
         return _transferAsCaller(from, to, amount);
@@ -121,6 +138,10 @@ contract ConfidentialToken is ZamaEthereumConfig {
         emit Transfer(from, to);
     }
 
+    // All-or-nothing: if `amount` exceeds the real balance, the whole transfer
+    // clamps to zero via FHE.select rather than reverting. Reverting on a
+    // failed encrypted comparison would itself leak information (observers
+    // could infer "this account didn't have enough").
     function _transferAsCaller(address from, address to, euint64 amount) internal returns (euint64) {
         euint64 fromBalance = confidentialBalanceOf(from);
 
