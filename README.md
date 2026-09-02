@@ -73,6 +73,14 @@ cp frontend/.env.relayer.local frontend/.env.local
 cd frontend && npm run dev
 ```
 
+The local public tokens are mocks. To give a wallet test balances, keep the deployer account imported in MetaMask and run:
+
+```bash
+LOCAL_USER=0xYourWalletAddress npm run faucet:local
+```
+
+This mints 1,000 units of every local public token to that address. Set `LOCAL_TOKEN_AMOUNT=10000` for a larger balance. The wallet still needs Hardhat ETH for gas, but it does not need real USDT or USDC.
+
 This deploys one shared `RelayerVault`, one confidential wrapper per configured token, and direct pairs against cUSDC, then seeds encrypted test liquidity. The relayer signer must watch `RelayerVault.Deposited`, mint the matching encrypted amount through the corresponding wrapper's `relayerMint`, and later submit encrypted burns followed by `batchWithdraw`. The vault does not automatically mint or swap: those actions require the off-chain relayer service and its accounting ledger.
 
 The frontend now includes the supported Ethereum token catalog: USDT, USDC, LINK, SHIB, UNI, AAVE, PEPE, MKR, DAI, LDO, ONDO, ENA, WETH, WBTC, CRV, ARB, OP, POL, GRT, SAND, MANA, APE, IMX, AXS, COMP, SNX, RPL, ENS, PAXG, and FLOKI. A token becomes swappable only after its confidential wrapper and pair are deployed and included in `VITE_TOKEN_LIST`; unconfigured entries remain disabled in the selector.

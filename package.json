@@ -10,6 +10,7 @@
     "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
     "deploy:relayer-pair": "hardhat run scripts/deploy-relayer-pair.ts --network sepolia",
     "deploy:relayer-local": "DEPLOY_MOCK_TOKENS=1 hardhat run scripts/deploy-relayer-pair.ts --network localhost",
+    "faucet:local": "hardhat run scripts/mint-local-tokens.ts --network localhost",
     "mint:testnet": "hardhat run scripts/mint-testnet.ts --network sepolia",
     "node": "hardhat node",
     "clean": "hardhat clean",
