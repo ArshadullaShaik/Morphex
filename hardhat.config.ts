@@ -1,7 +1,6 @@
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "@fhevm/hardhat-plugin";
-import "hardhat-deploy";
 
 // Hardhat configuration variables (set via `npx hardhat vars set <VAR>`)
 // These are optional for local development — only needed for testnet deployment
@@ -21,6 +20,9 @@ const config: HardhatUserConfig = {
         enabled: true,
         runs: 200,
       },
+      // The confidential AMM contains intentionally dense FHE arithmetic circuits.
+      // IR compilation avoids stack-depth limits while retaining optimizer output.
+      viaIR: true,
       evmVersion: "cancun",
     },
   },
@@ -41,18 +43,11 @@ const config: HardhatUserConfig = {
     },
   },
 
-  namedAccounts: {
-    deployer: {
-      default: 0,
-    },
-  },
-
   paths: {
     sources: "./contracts",
     tests: "./test",
     cache: "./cache",
     artifacts: "./artifacts",
-    deploy: "./deploy",
   },
 
   typechain: {

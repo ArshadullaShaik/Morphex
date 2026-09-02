@@ -1,6 +1,5 @@
 import { expect } from "chai";
-import { fhevm } from "hardhat";
-import { deployToken, createEncryptedUint64, getSigners } from "./helpers";
+import { decrypt64, deployToken, createEncryptedUint64 } from "./helpers";
 
 describe("MorphexToken (MORPH)", function () {
   const INITIAL_SUPPLY = 1_000_000n;
@@ -38,31 +37,32 @@ describe("MorphexToken (MORPH)", function () {
     it("should mint initial supply to deployer", async function () {
       const { token, signers } = await setup();
       const balanceHandle = await token.confidentialBalanceOf(signers.deployer.address);
-      const balance = await fhevm.decrypt64(balanceHandle);
+      const balance = await decrypt64(balanceHandle);
       expect(balance).to.equal(INITIAL_SUPPLY);
     });
 
     it("should update total supply on mint", async function () {
       const { token } = await setup();
       const supplyHandle = await token.confidentialTotalSupply();
-      const supply = await fhevm.decrypt64(supplyHandle);
+      const supply = await decrypt64(supplyHandle);
       expect(supply).to.equal(INITIAL_SUPPLY);
     });
 
     it("should allow owner to mint additional tokens", async function () {
-      const { token, signers } = await setup();
+      const { token, signers, tokenAddress } = await setup();
       const additionalAmount = 500_000n;
-      await token.mint(signers.alice.address, additionalAmount);
+      const encrypted = await createEncryptedUint64(tokenAddress, signers.deployer.address, additionalAmount);
+      await token.mint(signers.alice.address, encrypted.handle, encrypted.inputProof);
 
       const balanceHandle = await token.confidentialBalanceOf(signers.alice.address);
-      const balance = await fhevm.decrypt64(balanceHandle);
+      const balance = await decrypt64(balanceHandle);
       expect(balance).to.equal(additionalAmount);
     });
 
     it("should revert when non-owner tries to mint", async function () {
       const { token, signers } = await setup();
       await expect(
-        token.connect(signers.alice).mint(signers.alice.address, 100n)
+        token.connect(signers.alice).mint(signers.alice.address, "0x" + "00".repeat(32), "0x")
       ).to.be.reverted;
     });
   });
@@ -91,13 +91,13 @@ describe("MorphexToken (MORPH)", function () {
       );
 
       // Verify sender balance decreased
-      const senderBalance = await fhevm.decrypt64(
+      const senderBalance = await decrypt64(
         await token.confidentialBalanceOf(signers.deployer.address)
       );
       expect(senderBalance).to.equal(INITIAL_SUPPLY - transferAmount);
 
       // Verify recipient balance increased
-      const recipientBalance = await fhevm.decrypt64(
+      const recipientBalance = await decrypt64(
         await token.confidentialBalanceOf(signers.alice.address)
       );
       expect(recipientBalance).to.equal(transferAmount);
@@ -121,13 +121,13 @@ describe("MorphexToken (MORPH)", function () {
       );
 
       // Sender balance unchanged
-      const senderBalance = await fhevm.decrypt64(
+      const senderBalance = await decrypt64(
         await token.confidentialBalanceOf(signers.deployer.address)
       );
       expect(senderBalance).to.equal(INITIAL_SUPPLY);
 
       // Recipient balance still zero
-      const recipientBalance = await fhevm.decrypt64(
+      const recipientBalance = await decrypt64(
         await token.confidentialBalanceOf(signers.alice.address)
       );
       expect(recipientBalance).to.equal(0n);
@@ -164,7 +164,7 @@ describe("MorphexToken (MORPH)", function () {
         );
 
       // Verify Bob received tokens
-      const bobBalance = await fhevm.decrypt64(
+      const bobBalance = await decrypt64(
         await token.confidentialBalanceOf(signers.bob.address)
       );
       expect(bobBalance).to.equal(transferAmount);
@@ -213,13 +213,13 @@ describe("MorphexToken (MORPH)", function () {
       await token.connect(signers.alice)["confidentialTransfer(address,bytes32,bytes)"](signers.bob.address, e3.handle, e3.inputProof);
 
       // Verify final balances
-      const deployerBal = await fhevm.decrypt64(await token.confidentialBalanceOf(signers.deployer.address));
+      const deployerBal = await decrypt64(await token.confidentialBalanceOf(signers.deployer.address));
       expect(deployerBal).to.equal(INITIAL_SUPPLY - 3_000n);
 
-      const aliceBal = await fhevm.decrypt64(await token.confidentialBalanceOf(signers.alice.address));
+      const aliceBal = await decrypt64(await token.confidentialBalanceOf(signers.alice.address));
       expect(aliceBal).to.equal(500n);
 
-      const bobBal = await fhevm.decrypt64(await token.confidentialBalanceOf(signers.bob.address));
+      const bobBal = await decrypt64(await token.confidentialBalanceOf(signers.bob.address));
       expect(bobBal).to.equal(2_500n);
     });
   });

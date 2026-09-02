@@ -6,21 +6,25 @@
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
-    "deploy:local": "hardhat deploy --network localhost",
-    "deploy:sepolia": "hardhat deploy --network sepolia",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
+    "deploy:relayer-pair": "hardhat run scripts/deploy-relayer-pair.ts --network sepolia",
+    "deploy:relayer-local": "DEPLOY_MOCK_TOKENS=1 hardhat run scripts/deploy-relayer-pair.ts --network localhost",
+    "mint:testnet": "hardhat run scripts/mint-testnet.ts --network sepolia",
     "node": "hardhat node",
     "clean": "hardhat clean",
     "lint:sol": "solhint 'contracts/**/*.sol'",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@fhevm/hardhat-plugin": "^0.4.2",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "hardhat": "^2.22.0",
     "hardhat-deploy": "^0.14.0",
     "solhint": "^5.0.0",
+    "ts-node": "^10.9.0",
     "typescript": "^5.5.0",
-    "ts-node": "^10.9.0"
+    "vite": "^6.2.3"
   },
   "dependencies": {
     "@fhevm/solidity": "^0.11.1",

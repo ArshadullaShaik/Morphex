@@ -8,6 +8,14 @@ if (fhevm && !(fhevm as any).decrypt64) {
   };
 }
 
+export async function decrypt64(handle: any): Promise<bigint> {
+  return (fhevm as any).decrypt64(handle);
+}
+
+export async function decryptBool(handle: any): Promise<boolean> {
+  return fhevm.debugger.decryptEbool(handle);
+}
+
 /**
  * Standard signers for tests.
  * - deployer: contract owner, can mint
@@ -31,10 +39,12 @@ export async function deployToken(initialSupply: bigint = 1_000_000n) {
   await token.waitForDeployment();
 
   // Mint initial supply
-  const tx = await token.mint(signers.deployer.address, initialSupply);
+  const tokenAddress = await token.getAddress();
+  const encrypted = await createEncryptedUint64(tokenAddress, signers.deployer.address, initialSupply);
+  const tx = await token.mint(signers.deployer.address, encrypted.handle, encrypted.inputProof);
   await tx.wait();
 
-  return { token, signers, tokenAddress: await token.getAddress() };
+  return { token, signers, tokenAddress };
 }
 
 /**
