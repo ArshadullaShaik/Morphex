@@ -88,14 +88,27 @@ async function main() {
   };
   const network = await ethers.provider.getNetwork();
   const chainId = Number(network.chainId);
-  const chainName = chainId === 11155111 ? "Sepolia Testnet" : "Hardhat Local";
-  const rpcUrl = chainId === 11155111 ? "https://ethereum-sepolia-rpc.publicnode.com" : "http://127.0.0.1:8545";
+  const isSepolia = chainId === 11155111;
+  const chainName = isSepolia ? "Sepolia Testnet" : "Hardhat Local";
+  const rpcUrl = isSepolia
+    ? process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com"
+    : "http://127.0.0.1:8545";
   await fs.writeFile(
     "frontend/.env.local",
     `VITE_PAIR_ADDRESS=${deployment.pair}\nVITE_FACTORY_ADDRESS=${deployment.factory}\nVITE_MORPH_ADDRESS=${deployment.morph}\nVITE_MUSD_ADDRESS=${deployment.musd}\nVITE_TOKEN_LIST=${JSON.stringify(deployment.tokens)}\nVITE_PAIR_LIST=${JSON.stringify(deployment.pairs)}\nVITE_CHAIN_ID=${chainId}\nVITE_CHAIN_NAME=${chainName}\nVITE_RPC_URL=${rpcUrl}\n`,
   );
+  console.log("\nDeployment Summary:");
   console.log(JSON.stringify(deployment, null, 2));
-  console.log("Frontend addresses written to frontend/.env.local");
+
+  if (isSepolia) {
+    console.log("\nSepolia Etherscan Links:");
+    console.log(`- MORPH Token: https://sepolia.etherscan.io/address/${deployment.morph}`);
+    console.log(`- mUSD Token:  https://sepolia.etherscan.io/address/${deployment.musd}`);
+    console.log(`- PairFactory: https://sepolia.etherscan.io/address/${deployment.factory}`);
+    console.log(`- Pair:        https://sepolia.etherscan.io/address/${deployment.pair}`);
+  }
+
+  console.log("\nFrontend addresses written to frontend/.env.local");
 }
 
 main().catch((error) => {

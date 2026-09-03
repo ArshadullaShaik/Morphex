@@ -49,12 +49,57 @@ The suite uses fhEVM mock mode for contract tests. It covers encrypted minting/t
 
 ## Deploy
 
+### Local Development
+
 ```bash
 npx hardhat node
-npm run deploy:local
+npm run deploy:relayer-local
+cd frontend && npm run dev
 ```
 
-The deployment creates MORPH, mUSD, a pair factory, the canonical pair, and encrypted initial supplies. Sepolia deployment requires `MNEMONIC` and `INFURA_API_KEY` through Hardhat variables/environment.
+### Sepolia Testnet Deployment
+
+1. **Configure credentials**: Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+   Set your deployer wallet `PRIVATE_KEY` (must have Sepolia ETH for gas). You can also set a custom `SEPOLIA_RPC_URL` if desired.
+
+2. **Run pre-flight verification**:
+   ```bash
+   npm run verify:sepolia
+   ```
+   This checks RPC latency, Sepolia block height, deployer balance, and confirms Zama's FHEVM Coprocessor and ACL contracts are reachable on Sepolia.
+
+3. **Deploy Core Protocol to Sepolia**:
+   ```bash
+   npm run deploy:sepolia:core
+   ```
+   This deploys `RelayerVault`, `ConfidentialPairFactory`, mock testnet tokens (`USDC`, `USDT`), confidential wrappers (`cUSDC`, `cUSDT`), the canonical `cUSDC-cUSDT` AMM pair, seeds initial confidential liquidity, and automatically updates `frontend/.env.local`.
+
+4. **Fund a wallet with testnet tokens**:
+   ```bash
+   RECIPIENT=0xYourWalletAddress AMOUNT=1000 npm run faucet:sepolia
+   ```
+   Mints both public mock tokens (for vault deposits) and encrypted confidential tokens directly to your wallet for testing private swaps on Sepolia.
+
+5. **Start Frontend**:
+   ```bash
+   cd frontend && npm run dev
+   ```
+
+### UPI on-ramp and crypto redemption
+
+UPI is an entry-only payment rail. The local frontend mock verifies an INR payment and hands the settlement boundary to the relayer; the relayer must acquire or reserve real ERC-20 USDC/USDT backing before calling `relayerMint`. There is no UPI payout or INR off-ramp.
+
+The exit remains crypto-only:
+
+```text
+UPI -> real ERC-20 backing -> cUSDC/cUSDT -> private swap -> cUSDC/cUSDT
+    -> confidential burn -> relayer vault -> real ERC-20 -> user's wallet
+```
+
+Users submit `relayerBurnRequest` from the confidential wrapper and receive the corresponding underlying ERC-20 at the requesting wallet. The vault enforces that a relayer payout matches the request's wallet, token, and amount; the user escape hatch remains available after the configured delay.
 
 ### USDT/USDC relayer pair
 
@@ -63,6 +108,16 @@ The relayer flow is a bridge around confidential wrapper tokens. Deploy it with 
 ```bash
 TOKEN_ADDRESSES='{"USDT":"0x...","USDC":"0x...","LINK":"0x..."}' npm run deploy:relayer-pair
 ```
+
+To deploy only verified assets you have configured, limit the catalog explicitly:
+
+```bash
+DEPLOY_SYMBOLS=USDC,USDT TOKEN_ADDRESSES='{"USDC":"0x...","USDT":"0x..."}' npm run deploy:relayer-pair
+```
+
+`DEPLOY_SYMBOLS` is optional and defaults to the full catalog. Every selected address must be a real ERC-20 on the target network; an RPC provider key does not replace these addresses.
+
+For a Sepolia test deployment using official USDC plus a clearly labeled mock USDT, use `MOCK_SYMBOLS=USDT` and provide only the official USDC address. Mock tokens have no financial value and must not be used as production backing.
 
 For a local demo with visible USDT and USDC assets, use the built-in mock public tokens:
 
@@ -81,7 +136,7 @@ LOCAL_USER=0xYourWalletAddress npm run faucet:local
 
 This mints 1,000 units of every local public token to that address. Set `LOCAL_TOKEN_AMOUNT=10000` for a larger balance. The wallet still needs Hardhat ETH for gas, but it does not need real USDT or USDC.
 
-This deploys one shared `RelayerVault`, one confidential wrapper per configured token, and direct pairs against cUSDC, then seeds encrypted test liquidity. The relayer signer must watch `RelayerVault.Deposited`, mint the matching encrypted amount through the corresponding wrapper's `relayerMint`, and later submit encrypted burns followed by `batchWithdraw`. The vault does not automatically mint or swap: those actions require the off-chain relayer service and its accounting ledger.
+This deploys one shared `RelayerVault`, one confidential wrapper per configured token, and direct pairs against cUSDC, then seeds encrypted test liquidity. The relayer signer must watch verified backing deposits or mock UPI settlement, mint the matching encrypted amount through the corresponding wrapper's `relayerMint`, and later submit encrypted burns followed by `batchWithdraw`. The vault does not automatically mint or swap: those actions require the off-chain relayer service and its accounting ledger.
 
 The frontend now includes the supported Ethereum token catalog: USDT, USDC, LINK, SHIB, UNI, AAVE, PEPE, MKR, DAI, LDO, ONDO, ENA, WETH, WBTC, CRV, ARB, OP, POL, GRT, SAND, MANA, APE, IMX, AXS, COMP, SNX, RPL, ENS, PAXG, and FLOKI. A token becomes swappable only after its confidential wrapper and pair are deployed and included in `VITE_TOKEN_LIST`; unconfigured entries remain disabled in the selector.
 
@@ -94,3 +149,6 @@ The frontend now includes the supported Ethereum token catalog: USDT, USDC, LINK
 - Reentrancy is blocked at pair entry points.
 
 This is a complete contract protocol baseline, not an audited production deployment. A browser UI, quote-service policy, integration tests on Sepolia, and independent audit are required before mainnet use.
+
+
+

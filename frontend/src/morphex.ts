@@ -11,7 +11,11 @@ const pairAbi = [
   'function swapExactInput(bool,bytes32,bytes32,bytes,bytes) returns (bytes32)',
 ];
 
-const erc7984Abi = ['function setOperator(address,uint48)'];
+const erc7984Abi = [
+  'function setOperator(address,uint48)',
+  'function underlyingToken() view returns (address)',
+  'function relayerBurnRequest(bytes32,bytes,uint256) returns (uint256)',
+];
 const erc20BalanceAbi = [
   'function balanceOf(address) view returns (uint256)',
   'function decimals() view returns (uint8)',
@@ -19,6 +23,10 @@ const erc20BalanceAbi = [
 const confidentialBalanceAbi = [
   'function confidentialBalanceOf(address) view returns (bytes32)',
   'function decimals() view returns (uint8)',
+];
+const vaultWithdrawalAbi = [
+  'function getWithdrawalRequest(uint256) view returns (address user,address token,uint256 amount,uint256 requestedAt,bool fulfilled,bool escaped)',
+  'function claimEscapedWithdrawal(uint256)',
 ];
 
 declare global {
@@ -37,7 +45,7 @@ export const config = {
   vaultAddress: import.meta.env.VITE_RELAYER_VAULT_ADDRESS ?? '',
   chainId: Number(import.meta.env.VITE_CHAIN_ID || TESTNET_CHAIN_ID),
   chainName: import.meta.env.VITE_CHAIN_NAME || 'Sepolia Testnet',
-  rpcUrl: import.meta.env.VITE_RPC_URL || 'https://rpc.sepolia.org',
+  rpcUrl: import.meta.env.VITE_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com',
 };
 
 export type DeployedToken = { name: string; symbol: string; address: string };
@@ -122,6 +130,7 @@ export async function connectWallet(): Promise<{ signer: JsonRpcSigner; address:
 }
 
 export async function fetchPortfolioBalances(address: string) {
+  await useConfiguredNetwork();
   const ethereum = getEthereum();
   const provider = new BrowserProvider(ethereum);
   const nativeBalance = formatEther(await provider.getBalance(address));
@@ -219,7 +228,52 @@ export async function submitPrivateSwap(
   const inputToken = new Contract(sellTokenAddress, erc7984Abi, signer);
   const direction = pairToken0.toLowerCase() === sellTokenAddress.toLowerCase();
   await (await inputToken.setOperator(pairAddress, Math.floor(Date.now() / 1000) + 3600)).wait();
-  const encryptedInput = await fhevm.createEncryptedInput(config.pairAddress, address).add64(amountIn).encrypt();
-  const encryptedOutput = await fhevm.createEncryptedInput(config.pairAddress, address).add64(amountOutTarget).encrypt();
+  const encryptedInput = await fhevm.createEncryptedInput(pairAddress, address).add64(amountIn).encrypt();
+  const encryptedOutput = await fhevm.createEncryptedInput(pairAddress, address).add64(amountOutTarget).encrypt();
   return pair.swapExactInput(direction, encryptedInput.handles[0], encryptedOutput.handles[0], encryptedInput.inputProof, encryptedOutput.inputProof);
+}
+
+export async function submitConfidentialRedemption(
+  signer: JsonRpcSigner,
+  address: string,
+  tokenAddress: string,
+  amount: bigint,
+) {
+  if (!config.vaultAddress) throw new Error('Configure the relayer vault before redeeming.');
+  await useConfiguredNetwork();
+  await initializeFheSdk();
+  const fhevm = await createInstance({ ...SepoliaConfigV2, network: getEthereum() });
+  const token = new Contract(tokenAddress, erc7984Abi, signer);
+  const underlyingToken = await token.underlyingToken() as string;
+  const encrypted = await fhevm.createEncryptedInput(tokenAddress, address).add64(amount).encrypt();
+  const requestId = await token.relayerBurnRequest.staticCall(
+    encrypted.handles[0],
+    encrypted.inputProof,
+    amount,
+  ) as bigint;
+  await (await token.relayerBurnRequest(encrypted.handles[0], encrypted.inputProof, amount)).wait();
+  return { requestId, underlyingToken };
+}
+
+export async function fetchWithdrawalRequest(requestId: bigint) {
+  if (!config.vaultAddress) throw new Error('Configure the relayer vault before checking withdrawals.');
+  await useConfiguredNetwork();
+  const provider = new BrowserProvider(getEthereum());
+  const vault = new Contract(config.vaultAddress, vaultWithdrawalAbi, provider);
+  const request = await vault.getWithdrawalRequest(requestId);
+  return {
+    user: request.user as string,
+    token: request.token as string,
+    amount: request.amount as bigint,
+    requestedAt: request.requestedAt as bigint,
+    fulfilled: request.fulfilled as boolean,
+    escaped: request.escaped as boolean,
+  };
+}
+
+export async function claimEscapedWithdrawal(signer: JsonRpcSigner, requestId: bigint) {
+  if (!config.vaultAddress) throw new Error('Configure the relayer vault before claiming withdrawals.');
+  await useConfiguredNetwork();
+  const vault = new Contract(config.vaultAddress, vaultWithdrawalAbi, signer);
+  return (await vault.claimEscapedWithdrawal(requestId)).wait();
 }

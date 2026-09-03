@@ -137,6 +137,9 @@ contract RelayerVault is ReentrancyGuard, AccessControl {
                 WithdrawalRequest storage request = withdrawalRequests[requestIds[i]];
                 require(request.user != address(0), "RelayerVault: unknown request");
                 require(!request.fulfilled, "RelayerVault: already fulfilled");
+                require(payout.recipient == request.user, "RelayerVault: recipient mismatch");
+                require(payout.token == request.token, "RelayerVault: token mismatch");
+                require(payout.amount == request.amount, "RelayerVault: amount mismatch");
                 request.fulfilled = true;
                 request.escaped = false;
             }

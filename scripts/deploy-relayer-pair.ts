@@ -13,6 +13,16 @@ const TOKEN_CATALOG = [
   ["PAXG", "Pax Gold"], ["FLOKI", "FLOKI"],
 ] as const;
 
+function selectedCatalog() {
+  const symbols = process.env.DEPLOY_SYMBOLS || "USDC,USDT";
+  const requested = symbols.split(",").map((symbol) => symbol.trim().toUpperCase()).filter(Boolean);
+  if (!requested || requested.length === 0) return TOKEN_CATALOG.filter(([s]) => s === "USDC" || s === "USDT");
+  const selected = TOKEN_CATALOG.filter(([symbol]) => requested.includes(symbol));
+  const missing = requested.filter((symbol) => !selected.some(([catalogSymbol]) => catalogSymbol === symbol));
+  if (missing.length > 0) throw new Error(`Unknown DEPLOY_SYMBOLS value(s): ${missing.join(", ")}`);
+  return selected;
+}
+
 type PublicToken = { symbol: string; name: string; address: string };
 
 function configuredAddresses(): Record<string, string> {
@@ -40,10 +50,15 @@ async function main() {
   await fhevm.initializeCLIApi();
   const [deployer] = await ethers.getSigners();
   const suppliedAddresses = configuredAddresses();
+  const mockSymbols = new Set(
+    (process.env.MOCK_SYMBOLS || '').split(',').map((symbol) => symbol.trim().toUpperCase()).filter(Boolean),
+  );
   const publicTokens: PublicToken[] = [];
 
-  for (const [symbol, name] of TOKEN_CATALOG) {
-    const mock = process.env.DEPLOY_MOCK_TOKENS ? await deployMockToken(`Mock ${name}`, symbol) : undefined;
+  for (const [symbol, name] of selectedCatalog()) {
+    const mock = process.env.DEPLOY_MOCK_TOKENS || mockSymbols.has(symbol)
+      ? await deployMockToken(`Mock ${name}`, symbol)
+      : undefined;
     const address = mock ? await mock.getAddress() : suppliedAddresses[symbol];
     if (!address || !ethers.isAddress(address)) {
       throw new Error(`Missing valid address for ${symbol}. Configure TOKEN_ADDRESSES or use DEPLOY_MOCK_TOKENS=1.`);
@@ -118,20 +133,45 @@ async function main() {
     factory: await factory.getAddress(),
     pairs: pairList,
   };
-  await fs.writeFile("frontend/.env.relayer.local", [
-    `VITE_PAIR_ADDRESS=${pairAddresses.get("USDT") || ""}`,
+  const network = await ethers.provider.getNetwork();
+  const isLocal = network.chainId === 31337n;
+  const rpcUrl = isLocal
+    ? "http://127.0.0.1:8545"
+    : process.env.SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com";
+
+  const envContent = [
+    `VITE_PAIR_ADDRESS=${pairAddresses.get("USDT") || Object.values(pairList)[0] || ""}`,
     `VITE_FACTORY_ADDRESS=${await factory.getAddress()}`,
-    `VITE_MORPH_ADDRESS=${wrapperList.find((token) => token.symbol === "cUSDT")?.address || ""}`,
+    `VITE_MORPH_ADDRESS=${wrapperList.find((token) => token.symbol === "cUSDT")?.address || wrapperList[0]?.address || ""}`,
     `VITE_MUSD_ADDRESS=${await usdc.getAddress()}`,
     `VITE_TOKEN_LIST=${JSON.stringify(wrapperList)}`,
     `VITE_PAIR_LIST=${JSON.stringify(pairList)}`,
     `VITE_RELAYER_VAULT_ADDRESS=${await vault.getAddress()}`,
     `VITE_PUBLIC_TOKEN_LIST=${JSON.stringify(publicTokens)}`,
-    `VITE_CHAIN_ID=${(await ethers.provider.getNetwork()).chainId}`,
-    `VITE_CHAIN_NAME=${(await ethers.provider.getNetwork()).chainId === 31337n ? "Hardhat Local" : "Sepolia Testnet"}`,
-    `VITE_RPC_URL=${(await ethers.provider.getNetwork()).chainId === 31337n ? "http://127.0.0.1:8545" : "https://rpc.sepolia.org"}`,
-  ].join("\n") + "\n");
+    `VITE_CHAIN_ID=${network.chainId.toString()}`,
+    `VITE_CHAIN_NAME=${isLocal ? "Hardhat Local" : "Sepolia Testnet"}`,
+    `VITE_RPC_URL=${rpcUrl}`,
+  ].join("\n") + "\n";
+
+  await fs.writeFile("frontend/.env.relayer.local", envContent);
+  await fs.writeFile("frontend/.env.local", envContent);
+
+  console.log("\nDeployment Summary:");
   console.log(JSON.stringify(deployment, null, 2));
+
+  if (!isLocal) {
+    console.log("\nSepolia Etherscan Links:");
+    console.log(`- RelayerVault: https://sepolia.etherscan.io/address/${await vault.getAddress()}`);
+    console.log(`- PairFactory:  https://sepolia.etherscan.io/address/${await factory.getAddress()}`);
+    for (const wrapper of wrapperList) {
+      console.log(`- ${wrapper.name} (${wrapper.symbol}): https://sepolia.etherscan.io/address/${wrapper.address}`);
+    }
+    for (const [pairKey, pairAddr] of Object.entries(pairList)) {
+      console.log(`- Pair [${pairKey}]: https://sepolia.etherscan.io/address/${pairAddr}`);
+    }
+  }
+
+  console.log("\nFrontend environment written to frontend/.env.local and frontend/.env.relayer.local");
 }
 
 main().catch((error) => {

@@ -101,6 +101,25 @@ describe("RelayerVault + confidential bridge", function () {
     await expect(vault.connect(signers.alice).claimEscapedWithdrawal(requestId)).to.be.reverted;
   });
 
+  it("only pays the requesting wallet and the request's underlying token and amount", async function () {
+    const { signers, usdt, token, vault } = await setup();
+    const amount = 100_000n;
+    await usdt.mint(signers.alice.address, amount);
+    await usdt.connect(signers.alice).approve(await vault.getAddress(), amount);
+    await vault.connect(signers.alice).deposit(await usdt.getAddress(), amount);
+
+    const mint = await createEncryptedUint64(await token.getAddress(), signers.deployer.address, amount);
+    await token.connect(signers.deployer).relayerMint(signers.alice.address, mint.handle, mint.inputProof);
+    const burn = await createEncryptedUint64(await token.getAddress(), signers.alice.address, amount);
+    const requestId = await token.connect(signers.alice).relayerBurnRequest.staticCall(burn.handle, burn.inputProof, amount);
+    await token.connect(signers.alice).relayerBurnRequest(burn.handle, burn.inputProof, amount);
+
+    await expect(vault.connect(signers.deployer).batchWithdraw(
+      [{ recipient: signers.bob.address, token: await usdt.getAddress(), amount }],
+      [requestId],
+    )).to.be.revertedWith("RelayerVault: recipient mismatch");
+  });
+
   it("honors access control and signer rotation", async function () {
     const { signers, usdt, token, vault } = await setup();
     const enc = await createEncryptedUint64(await token.getAddress(), signers.alice.address, 10_000n);

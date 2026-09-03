@@ -11,12 +11,15 @@ import { ExploreView } from './components/ExploreView';
 import { LaunchesView } from './components/LaunchesView';
 import { PoolView } from './components/PoolView';
 import { PortfolioView } from './components/PortfolioView';
+import { RedemptionView } from './components/RedemptionView';
+import { OnRampView } from './components/OnRampView';
 import { VaultView } from './components/VaultView';
 import { ETHEREUM_TOKEN, fetchTokenPrices, TESTNET_TOKENS } from './data/tokens';
 import { Token, ActiveNavTab } from './types';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveNavTab>('Trade');
+  const [vaultSubTab, setVaultSubTab] = useState<'deposit' | 'redeem' | 'onramp'>('deposit');
   const [selectedBgId, setSelectedBgId] = useState<string>('ghibli-valley-oil');
   
   // DEX state
@@ -144,7 +147,50 @@ export default function App() {
         )}
 
         {activeTab === 'Vault' && (
-          <VaultView connectedWallet={connectedWallet} onOpenWallet={() => setIsWalletModalOpen(true)} />
+          <div className="w-full max-w-[460px] mx-auto space-y-4">
+            <div className="flex rounded-2xl bg-white p-1 border border-[#E5E7EB] shadow-xs">
+              <button
+                onClick={() => setVaultSubTab('deposit')}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                  vaultSubTab === 'deposit'
+                    ? 'bg-[#00E5FF] text-[#0D111C] shadow-xs'
+                    : 'text-[#6B7280] hover:text-[#0D111C]'
+                }`}
+              >
+                Deposit Public
+              </button>
+              <button
+                onClick={() => setVaultSubTab('redeem')}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                  vaultSubTab === 'redeem'
+                    ? 'bg-[#00E5FF] text-[#0D111C] shadow-xs'
+                    : 'text-[#6B7280] hover:text-[#0D111C]'
+                }`}
+              >
+                Redeem (Withdraw)
+              </button>
+              <button
+                onClick={() => setVaultSubTab('onramp')}
+                className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all ${
+                  vaultSubTab === 'onramp'
+                    ? 'bg-[#00E5FF] text-[#0D111C] shadow-xs'
+                    : 'text-[#6B7280] hover:text-[#0D111C]'
+                }`}
+              >
+                UPI On-Ramp
+              </button>
+            </div>
+
+            {vaultSubTab === 'deposit' && (
+              <VaultView connectedWallet={connectedWallet} onOpenWallet={() => setIsWalletModalOpen(true)} />
+            )}
+            {vaultSubTab === 'redeem' && (
+              <RedemptionView connectedWallet={connectedWallet} onOpenWallet={() => setIsWalletModalOpen(true)} />
+            )}
+            {vaultSubTab === 'onramp' && (
+              <OnRampView connectedWallet={connectedWallet} onOpenWallet={() => setIsWalletModalOpen(true)} />
+            )}
+          </div>
         )}
       </main>
 
