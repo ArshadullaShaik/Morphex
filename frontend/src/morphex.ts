@@ -155,6 +155,42 @@ export async function fetchPortfolioBalances(address: string) {
   return { nativeBalance, tokenBalances, confidentialBalances, confidentialError };
 }
 
+interface DecryptionSession {
+  keypair: { publicKey: string; privateKey: string };
+  signature: string;
+  startTimestamp: number;
+  durationDays: number;
+  contractAddresses: string[];
+  address: string;
+}
+
+const SESSION_KEY = 'morphex_decryption_session';
+
+function getValidSession(userAddress: string, contractAddresses: string[]): DecryptionSession | null {
+  try {
+    const raw = localStorage.getItem(`${SESSION_KEY}_${userAddress.toLowerCase()}`);
+    if (!raw) return null;
+    const session: DecryptionSession = JSON.parse(raw);
+    const now = Math.floor(Date.now() / 1000);
+    const expiry = session.startTimestamp + session.durationDays * 86400;
+    if (now >= expiry - 3600) return null; // Expired or expiring within 1 hour
+    const sessionAddrs = new Set(session.contractAddresses.map((a) => a.toLowerCase()));
+    const allCovered = contractAddresses.every((a) => sessionAddrs.has(a.toLowerCase()));
+    if (!allCovered) return null;
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(session: DecryptionSession) {
+  try {
+    localStorage.setItem(`${SESSION_KEY}_${session.address.toLowerCase()}`, JSON.stringify(session));
+  } catch {
+    // Ignore storage quota
+  }
+}
+
 async function fetchConfidentialBalances(address: string, provider: BrowserProvider) {
   if (deployedTokens.length === 0) return [];
   if (config.chainId !== TESTNET_CHAIN_ID) {
@@ -175,34 +211,59 @@ async function fetchConfidentialBalances(address: string, provider: BrowserProvi
     .filter((entry) => zeroHandle.test(entry.handle))
     .map(({ token, decimals }) => ({ token, balance: formatUnits(0n, decimals) }));
   if (decryptableEntries.length === 0) return zeroBalances;
-  const startTimestamp = Math.floor(Date.now() / 1000);
+
   await initializeFheSdk();
   const fhevm = await createInstance({ ...SepoliaConfigV2, network: getEthereum() });
-  const keypair = fhevm.generateKeypair();
   const contractAddresses = decryptableEntries.map((entry) => entry.token.address);
-  const eip712 = fhevm.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, 1);
-  const signer = await provider.getSigner(address);
-  const { EIP712Domain: _domainType, ...signingTypes } = eip712.types;
-  const signature = await signer.signTypedData(
-    eip712.domain,
-    signingTypes as unknown as Record<string, Array<{ name: string; type: string }>>,
-    eip712.message,
-  );
+
+  let session = getValidSession(address, contractAddresses);
+
+  if (!session) {
+    const startTimestamp = Math.floor(Date.now() / 1000);
+    const keypair = fhevm.generateKeypair();
+    const durationDays = 7; // 7-day automated session
+    const eip712 = fhevm.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, durationDays);
+    const signer = await provider.getSigner(address);
+    const { EIP712Domain: _domainType, ...signingTypes } = eip712.types;
+    const signature = await signer.signTypedData(
+      eip712.domain,
+      signingTypes as unknown as Record<string, Array<{ name: string; type: string }>>,
+      eip712.message,
+    );
+    session = {
+      keypair,
+      signature,
+      startTimestamp,
+      durationDays,
+      contractAddresses,
+      address,
+    };
+    saveSession(session);
+  }
+
   const clearValues = await fhevm.userDecrypt(
     decryptableEntries.map(({ handle, token }) => ({ handle, contractAddress: token.address })),
-    keypair.privateKey,
-    keypair.publicKey,
-    signature,
-    contractAddresses,
+    session.keypair.privateKey,
+    session.keypair.publicKey,
+    session.signature,
+    session.contractAddresses,
     address,
-    startTimestamp,
-    1,
+    session.startTimestamp,
+    session.durationDays,
   );
 
-  const decryptedBalances = decryptableEntries.map(({ token, handle, decimals }) => ({
-    token,
-    balance: formatUnits(clearValues[handle as `0x${string}`] as bigint, decimals),
-  }));
+  const decryptedBalances = decryptableEntries.map(({ token, handle, decimals }) => {
+    const handleKey = handle.toLowerCase();
+    const matchingKey = Object.keys(clearValues).find(
+      (k) => k.toLowerCase() === handleKey || k.toLowerCase().replace(/^0x/, '') === handleKey.replace(/^0x/, ''),
+    );
+    const rawVal = matchingKey ? clearValues[matchingKey as `0x${string}`] : 0n;
+    const bigVal = typeof rawVal === 'bigint' ? rawVal : BigInt(rawVal ?? 0);
+    return {
+      token,
+      balance: formatUnits(bigVal, decimals),
+    };
+  });
   return [...decryptedBalances, ...zeroBalances];
 }
 
