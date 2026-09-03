@@ -27,6 +27,10 @@ export const VaultView: React.FC<{ connectedWallet: string | null; onOpenWallet:
     setMessage(null);
     try {
       const { signer } = await connectWallet();
+      const code = await signer.provider.getCode(selected.address);
+      if (code === '0x') {
+        throw new Error(`No contract found for ${selected.symbol} on ${config.chainName}. Redeploy the local contracts and reload the app.`);
+      }
       const token = new Contract(selected.address, erc20Abi, signer as JsonRpcSigner);
       const decimals = Number(await token.decimals());
       const units = parseUnits(amount, decimals);

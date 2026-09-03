@@ -1,5 +1,7 @@
-import { BrowserProvider, Contract, JsonRpcSigner } from 'ethers';
-import { createInstance, SepoliaConfig } from '@zama-fhe/relayer-sdk/web';
+import { BrowserProvider, Contract, JsonRpcSigner, formatEther, formatUnits } from 'ethers';
+import { createInstance, initSDK, SepoliaConfigV2 } from '@zama-fhe/relayer-sdk/web';
+import tfheWasmUrl from '../node_modules/@zama-fhe/relayer-sdk/lib/tfhe_bg.wasm?url';
+import kmsWasmUrl from '../node_modules/@zama-fhe/relayer-sdk/lib/kms_lib_bg.wasm?url';
 
 export const TESTNET_CHAIN_ID = 11155111;
 export const LOCAL_CHAIN_ID = 31337;
@@ -10,6 +12,14 @@ const pairAbi = [
 ];
 
 const erc7984Abi = ['function setOperator(address,uint48)'];
+const erc20BalanceAbi = [
+  'function balanceOf(address) view returns (uint256)',
+  'function decimals() view returns (uint8)',
+];
+const confidentialBalanceAbi = [
+  'function confidentialBalanceOf(address) view returns (bytes32)',
+  'function decimals() view returns (uint8)',
+];
 
 declare global {
   interface Window {
@@ -55,6 +65,13 @@ const deployedPairs: Record<string, string> = (() => {
     return {};
   }
 })();
+
+let sdkInitialization: Promise<boolean> | undefined;
+
+function initializeFheSdk() {
+  sdkInitialization ??= initSDK({ tfheParams: tfheWasmUrl, kmsParams: kmsWasmUrl });
+  return sdkInitialization;
+}
 
 function getEthereum() {
   if (!window.ethereum) throw new Error('Install a browser wallet to continue.');
@@ -104,6 +121,82 @@ export async function connectWallet(): Promise<{ signer: JsonRpcSigner; address:
   return { signer, address: await signer.getAddress() };
 }
 
+export async function fetchPortfolioBalances(address: string) {
+  const ethereum = getEthereum();
+  const provider = new BrowserProvider(ethereum);
+  const nativeBalance = formatEther(await provider.getBalance(address));
+  const tokenBalances = await Promise.all(publicTokens.map(async (token) => {
+    try {
+      const contract = new Contract(token.address, erc20BalanceAbi, provider);
+      const [balance, decimals] = await Promise.all([contract.balanceOf(address), contract.decimals()]);
+      return { token, balance: formatUnits(balance, decimals), error: null };
+    } catch {
+      return { token, balance: '0', error: `Could not read ${token.symbol}.` };
+    }
+  }));
+
+  let confidentialBalances: Awaited<ReturnType<typeof fetchConfidentialBalances>> = [];
+  let confidentialError: string | null = null;
+  try {
+    confidentialBalances = await fetchConfidentialBalances(address, provider);
+  } catch (error) {
+    confidentialError = error instanceof Error ? error.message : 'Could not decrypt confidential balances.';
+  }
+
+  return { nativeBalance, tokenBalances, confidentialBalances, confidentialError };
+}
+
+async function fetchConfidentialBalances(address: string, provider: BrowserProvider) {
+  if (deployedTokens.length === 0) return [];
+  if (config.chainId !== TESTNET_CHAIN_ID) {
+    throw new Error('Confidential balances require the Sepolia Zama relayer. Switch the app to Sepolia to decrypt them.');
+  }
+
+  const contracts = deployedTokens.map((token) => new Contract(token.address, confidentialBalanceAbi, provider));
+  const entries = await Promise.all(contracts.map(async (contract, index) => {
+    const [handle, decimals] = await Promise.all([
+      contract.confidentialBalanceOf(address) as Promise<string>,
+      contract.decimals() as Promise<bigint>,
+    ]);
+    return { token: deployedTokens[index], handle, decimals: Number(decimals) };
+  }));
+  const zeroHandle = /^0x0{64}$/i;
+  const decryptableEntries = entries.filter((entry) => !zeroHandle.test(entry.handle));
+  const zeroBalances = entries
+    .filter((entry) => zeroHandle.test(entry.handle))
+    .map(({ token, decimals }) => ({ token, balance: formatUnits(0n, decimals) }));
+  if (decryptableEntries.length === 0) return zeroBalances;
+  const startTimestamp = Math.floor(Date.now() / 1000);
+  await initializeFheSdk();
+  const fhevm = await createInstance({ ...SepoliaConfigV2, network: getEthereum() });
+  const keypair = fhevm.generateKeypair();
+  const contractAddresses = decryptableEntries.map((entry) => entry.token.address);
+  const eip712 = fhevm.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, 1);
+  const signer = await provider.getSigner(address);
+  const { EIP712Domain: _domainType, ...signingTypes } = eip712.types;
+  const signature = await signer.signTypedData(
+    eip712.domain,
+    signingTypes as unknown as Record<string, Array<{ name: string; type: string }>>,
+    eip712.message,
+  );
+  const clearValues = await fhevm.userDecrypt(
+    decryptableEntries.map(({ handle, token }) => ({ handle, contractAddress: token.address })),
+    keypair.privateKey,
+    keypair.publicKey,
+    signature,
+    contractAddresses,
+    address,
+    startTimestamp,
+    1,
+  );
+
+  const decryptedBalances = decryptableEntries.map(({ token, handle, decimals }) => ({
+    token,
+    balance: formatUnits(clearValues[handle as `0x${string}`] as bigint, decimals),
+  }));
+  return [...decryptedBalances, ...zeroBalances];
+}
+
 export async function submitPrivateSwap(
   signer: JsonRpcSigner,
   address: string,
@@ -114,8 +207,12 @@ export async function submitPrivateSwap(
   buyTokenAddress: string,
 ) {
   if (!hasContractConfig()) throw new Error('Deploy the Sepolia testnet contracts before swapping.');
+  if (config.chainId !== TESTNET_CHAIN_ID) {
+    throw new Error('Private swaps require a Sepolia deployment with the Zama relayer.');
+  }
   await useConfiguredNetwork();
-  const fhevm = await createInstance({ ...SepoliaConfig, network: getEthereum() });
+  await initializeFheSdk();
+  const fhevm = await createInstance({ ...SepoliaConfigV2, network: getEthereum() });
   const pairAddress = deployedPairs[pairKey(sellTokenAddress, buyTokenAddress)] || config.pairAddress;
   const pair = new Contract(pairAddress, pairAbi, signer);
   const pairToken0 = await pair.token0();

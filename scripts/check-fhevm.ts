@@ -1,8 +1,8 @@
 import { fhevm } from "hardhat";
-import * as mockUtils from "@fhevm/mock-utils";
 
 async function main() {
   await fhevm.initializeCLIApi();
+  const mockUtils = await import("@fhevm/mock-utils");
   console.log("fhevm isMock:", fhevm.isMock);
   console.log("fhevm debugger:", !!fhevm.debugger);
   console.log("FhevmType keys:", Object.keys(mockUtils.FhevmType || {}));

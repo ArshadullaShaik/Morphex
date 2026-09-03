@@ -12,6 +12,12 @@ const MNEMONIC = (() => {
   }
 })();
 
+const SEPOLIA_RPC_URL = process.env.ALCHEMY_API_KEY
+  ? `https://eth-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
+  : process.env.INFURA_API_KEY
+    ? `https://sepolia.infura.io/v3/${process.env.INFURA_API_KEY}`
+    : "https://ethereum-sepolia-rpc.publicnode.com";
+
 const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.27",
@@ -34,7 +40,7 @@ const config: HardhatUserConfig = {
       // Mock FHE mode — no coprocessor needed for local testing
     },
     sepolia: {
-      url: `https://sepolia.infura.io/v3/${process.env.INFURA_API_KEY || ""}`,
+      url: SEPOLIA_RPC_URL,
       accounts: {
         mnemonic: process.env.MNEMONIC || "test test test test test test test test test test test junk",
         count: 10,

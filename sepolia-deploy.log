@@ -1,0 +1,24 @@
+
+> morphex@0.1.0 deploy:sepolia
+> hardhat run scripts/deploy.ts --network sepolia
+
+HardhatError: HH110: Invalid JSON-RPC response received: <!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<html><head>
+<title>404 Not Found</title>
+</head><body>
+<h1>Not Found</h1>
+<p>The requested URL was not found on this server.</p>
+<hr>
+<address>Apache/2.4.58 (Ubuntu) Server at rpc.sepolia.org Port 80</address>
+</body></html>
+
+    at parseJsonResponse (/Users/valoucard/projects/Morphex/node_modules/hardhat/src/internal/util/jsonrpc.ts:47:11)
+    at HttpProvider._fetchJsonRpcResponse (/Users/valoucard/projects/Morphex/node_modules/hardhat/src/internal/core/providers/http.ts:246:31)
+    at processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async HttpProvider.request (/Users/valoucard/projects/Morphex/node_modules/hardhat/src/internal/core/providers/http.ts:104:29)
+    at async providerExtender (/Users/valoucard/projects/Morphex/node_modules/@fhevm/hardhat-plugin/src/internal/ProviderExtender.ts:15:22)
+    at async createProvider (/Users/valoucard/projects/Morphex/node_modules/hardhat/src/internal/core/providers/construction.ts:139:23)
+    at async LazyInitializationProviderAdapter.init (/Users/valoucard/projects/Morphex/node_modules/hardhat/src/internal/core/providers/lazy-initialization.ts:42:23)
+    at async LazyInitializationProviderAdapter._getOrInitProvider (/Users/valoucard/projects/Morphex/node_modules/hardhat/src/internal/core/providers/lazy-initialization.ts:173:23)
+    at async LazyInitializationProviderAdapter.send (/Users/valoucard/projects/Morphex/node_modules/hardhat/src/internal/core/providers/lazy-initialization.ts:68:22)
+    at async staticCallResult (/Users/valoucard/projects/Morphex/node_modules/ethers/src.ts/contract/contract.ts:337:22)

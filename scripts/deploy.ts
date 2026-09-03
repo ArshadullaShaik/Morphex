@@ -42,15 +42,21 @@ async function main() {
     ["Morphex", "MORPH"],
     ["Morphex USD", "mUSD"],
   ];
-  const tokens = await Promise.all(tokenSpecs.map(([name, symbol]) => tokenFactory.deploy(name, symbol, deployer.address)));
-  await Promise.all(tokens.map((token) => token.waitForDeployment()));
+  const tokens = [] as any[];
+  for (const [name, symbol] of tokenSpecs) {
+    const token = await tokenFactory.deploy(name, symbol, deployer.address);
+    await token.waitForDeployment();
+    tokens.push(token);
+  }
   const [morph, usd] = tokens;
 
   const factoryFactory = await ethers.getContractFactory("ConfidentialPairFactory", deployer);
   const pairFactory = await factoryFactory.deploy();
   await pairFactory.waitForDeployment();
 
-  await Promise.all(tokens.map((token) => mintConfidential(token, deployer.address)));
+  for (const token of tokens) {
+    await mintConfidential(token, deployer.address);
+  }
 
   const pairAddresses: Record<string, string> = {};
   for (let first = 0; first < tokens.length; first += 1) {
@@ -80,9 +86,13 @@ async function main() {
     tokens: tokenList,
     pairs: pairAddresses,
   };
+  const network = await ethers.provider.getNetwork();
+  const chainId = Number(network.chainId);
+  const chainName = chainId === 11155111 ? "Sepolia Testnet" : "Hardhat Local";
+  const rpcUrl = chainId === 11155111 ? "https://ethereum-sepolia-rpc.publicnode.com" : "http://127.0.0.1:8545";
   await fs.writeFile(
     "frontend/.env.local",
-    `VITE_PAIR_ADDRESS=${deployment.pair}\nVITE_FACTORY_ADDRESS=${deployment.factory}\nVITE_MORPH_ADDRESS=${deployment.morph}\nVITE_MUSD_ADDRESS=${deployment.musd}\nVITE_TOKEN_LIST=${JSON.stringify(deployment.tokens)}\nVITE_PAIR_LIST=${JSON.stringify(deployment.pairs)}\n`,
+    `VITE_PAIR_ADDRESS=${deployment.pair}\nVITE_FACTORY_ADDRESS=${deployment.factory}\nVITE_MORPH_ADDRESS=${deployment.morph}\nVITE_MUSD_ADDRESS=${deployment.musd}\nVITE_TOKEN_LIST=${JSON.stringify(deployment.tokens)}\nVITE_PAIR_LIST=${JSON.stringify(deployment.pairs)}\nVITE_CHAIN_ID=${chainId}\nVITE_CHAIN_NAME=${chainName}\nVITE_RPC_URL=${rpcUrl}\n`,
   );
   console.log(JSON.stringify(deployment, null, 2));
   console.log("Frontend addresses written to frontend/.env.local");

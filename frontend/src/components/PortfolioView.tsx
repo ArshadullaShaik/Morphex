@@ -1,6 +1,7 @@
-import React from 'react';
-import { Wallet, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
-import { POPULAR_TOKENS } from '../data/tokens';
+import React, { useEffect, useState } from 'react';
+import { Wallet, ArrowUpRight, ArrowDownLeft, LoaderCircle, RefreshCw } from 'lucide-react';
+import { fetchPortfolioBalances } from '../morphex';
+import { Token } from '../types';
 import { TokenIcon } from './TokenIcon';
 
 interface PortfolioViewProps {
@@ -12,14 +13,41 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
   connectedWallet,
   onOpenWallet,
 }) => {
-  const userBalances = [
-    { token: POPULAR_TOKENS[0], balance: 3.45, valueUSD: 9384.0 },
-    { token: POPULAR_TOKENS[1], balance: 4500.0, valueUSD: 4500.0 },
-    { token: POPULAR_TOKENS[2], balance: 0.15, valueUSD: 9345.0 },
-    { token: POPULAR_TOKENS[3], balance: 250.0, valueUSD: 2110.0 },
-  ];
+  const [nativeBalance, setNativeBalance] = useState<string | null>(null);
+  const [userBalances, setUserBalances] = useState<Array<{ token: Token; balance: string }>>([]);
+  const [confidentialBalances, setConfidentialBalances] = useState<Array<{ token: Token; balance: string }>>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState<string | null>(null);
 
-  const totalPortfolioUSD = userBalances.reduce((acc, curr) => acc + curr.valueUSD, 0);
+  const loadBalances = async () => {
+    if (!connectedWallet) return;
+    setIsLoading(true);
+    setBalanceError(null);
+    try {
+      const result = await fetchPortfolioBalances(connectedWallet);
+      setNativeBalance(result.nativeBalance);
+      setUserBalances(result.tokenBalances.map(({ token, balance }) => ({
+        token: { ...token, priceUSD: token.symbol === 'USDC' || token.symbol === 'USDT' ? 1 : 0 },
+        balance,
+      })));
+      setConfidentialBalances(result.confidentialBalances.map(({ token, balance }) => ({
+        token: { ...token, priceUSD: token.symbol === 'cUSDC' || token.symbol === 'cUSDT' ? 1 : 0 },
+        balance,
+      })));
+      if (result.confidentialError) setBalanceError(result.confidentialError);
+    } catch (error) {
+      setBalanceError(error instanceof Error ? error.message : 'Could not load wallet balances.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadBalances();
+  }, [connectedWallet]);
+
+  const totalPortfolioUSD = [...userBalances, ...confidentialBalances]
+    .reduce((acc, curr) => acc + Number(curr.balance) * curr.token.priceUSD, 0);
 
   if (!connectedWallet) {
     return (
@@ -50,15 +78,15 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
         <div>
           <div className="text-xs text-[#6B7280] font-medium">Total Balance</div>
           <div className="text-3xl font-bold text-[#0D111C] tracking-tight mt-1 font-mono">
-            ${totalPortfolioUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {isLoading ? <LoaderCircle className="h-7 w-7 animate-spin" /> : `$${totalPortfolioUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           </div>
-          <div className="text-xs text-[#10B981] font-semibold mt-1 flex items-center gap-1">
-            <span>+$428.40 (1.74%)</span>
-            <span className="text-[#9CA3AF] font-normal">past 24h</span>
-          </div>
+          <div className="text-xs text-[#6B7280] mt-1">{nativeBalance === null ? 'Wallet balance' : `${Number(nativeBalance).toFixed(4)} ETH`}</div>
         </div>
 
         <div className="flex items-center gap-2">
+          <button onClick={() => void loadBalances()} disabled={isLoading} aria-label="Refresh balances" className="p-2 rounded-xl border border-[#E5E7EB] hover:bg-[#F9FAFB] disabled:opacity-50">
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
           <button className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-[#0D111C] bg-[#00E5FF] hover:bg-[#00D2EA] shadow-sm transition-all">
             <ArrowDownLeft className="w-3.5 h-3.5" />
             <span>Receive</span>
@@ -69,6 +97,8 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
           </button>
         </div>
       </div>
+
+      {balanceError && <p className="mb-4 rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3 text-xs font-semibold text-[#B91C1C]">{balanceError}</p>}
 
       {/* Asset breakdown table */}
       <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-sm overflow-hidden">
@@ -85,18 +115,40 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
                   <TokenIcon symbol={item.token.symbol} size="md" />
                   <div>
                     <div className="font-semibold text-xs text-[#0D111C]">{item.token.name}</div>
-                    <div className="text-[11px] text-[#6B7280]">{item.balance} {item.token.symbol}</div>
+                    <div className="text-[11px] text-[#6B7280]">{Number(item.balance).toLocaleString(undefined, { maximumFractionDigits: 6 })} {item.token.symbol}</div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="font-semibold text-xs text-[#0D111C] font-mono">${item.valueUSD.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
-                  <div className={`text-[11px] font-mono ${change >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
-                    {change >= 0 ? '+' : ''}{change}%
-                  </div>
+                  <div className="font-semibold text-xs text-[#0D111C] font-mono">${(Number(item.balance) * item.token.priceUSD).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                  <div className="text-[11px] font-mono text-[#6B7280]">{item.token.priceUSD ? 'Estimated value' : 'Price unavailable'}</div>
                 </div>
               </div>
             );
           })}
+        </div>
+      </div>
+
+      <div className="mt-6 bg-white rounded-2xl border border-[#E5E7EB] shadow-sm overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-[#E5E7EB] flex items-center justify-between">
+          <h3 className="font-bold text-sm text-[#0D111C]">Confidential Assets</h3>
+          <span className="text-xs text-[#6B7280] font-mono">{confidentialBalances.length} tokens</span>
+        </div>
+        <div className="divide-y divide-[#F3F4F6]">
+          {confidentialBalances.map((item) => (
+            <div key={item.token.symbol} className="p-4 flex items-center justify-between hover:bg-[#F9FAFB] transition-colors">
+              <div className="flex items-center gap-3">
+                <TokenIcon symbol={item.token.symbol} size="md" />
+                <div>
+                  <div className="font-semibold text-xs text-[#0D111C]">{item.token.name}</div>
+                  <div className="text-[11px] text-[#6B7280]">{Number(item.balance).toLocaleString(undefined, { maximumFractionDigits: 6 })} {item.token.symbol}</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="font-semibold text-xs text-[#0D111C] font-mono">${(Number(item.balance) * item.token.priceUSD).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                <div className="text-[11px] font-mono text-[#6B7280]">Encrypted balance</div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
