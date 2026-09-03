@@ -60,7 +60,7 @@ async function main() {
   console.log(`Watching RelayerVault at: ${vaultAddress}`);
   console.log("Listening for new deposits on Sepolia...\n");
 
-  const processDeposits = async () => {
+  const processLoop = async () => {
     try {
       const currentBlock = await ethers.provider.getBlockNumber();
       const filter = vault.filters.Deposited();
@@ -103,18 +103,51 @@ async function main() {
         console.log(`  [SUCCESS] Minted ${amountFormatted} ${mapping.confidentialSymbol} to ${user}!`);
         console.log(`  Mint Tx: https://sepolia.etherscan.io/tx/${tx.hash}\n`);
       }
+
+      // 2. Check and process pending Withdrawal Requests
+      const withdrawalFilter = vault.filters.WithdrawalRequested();
+      const withdrawalEvents = await vault.queryFilter(withdrawalFilter, Math.max(0, currentBlock - 500));
+
+      for (const e of withdrawalEvents) {
+        const { user, requestId, token, amount } = (e as any).args;
+        const key = `withdrawal_${requestId.toString()}`;
+        if (processed[key]) continue;
+
+        const req = await vault.withdrawalRequests(requestId);
+        if (req.fulfilled) {
+          processed[key] = true;
+          await saveProcessed(processed);
+          continue;
+        }
+
+        const amountFormatted = ethers.formatUnits(amount, 6);
+        console.log(`\n>>> New Withdrawal Request #${requestId} Detected! <<<`);
+        console.log(`  User:   ${user}`);
+        console.log(`  Amount: ${amountFormatted}`);
+
+        console.log(`  Calling batchWithdraw on RelayerVault...`);
+        const payout = { recipient: user, token, amount };
+        const tx = await vault.batchWithdraw([payout], [requestId]);
+        console.log(`  Submitted batchWithdraw tx: ${tx.hash}`);
+        await tx.wait();
+
+        processed[key] = true;
+        await saveProcessed(processed);
+        console.log(`  [SUCCESS] Paid out ${amountFormatted} tokens to ${user}!`);
+        console.log(`  Payout Tx: https://sepolia.etherscan.io/tx/${tx.hash}\n`);
+      }
     } catch (err: any) {
       console.error("  [ERROR during polling]:", err.message || err);
     }
   };
 
   // Run immediately
-  await processDeposits();
+  await processLoop();
 
   // If running as continuous daemon (DAEMON=1 or default in npm run relayer:daemon)
   if (process.env.ONCE !== "1") {
-    console.log("Relayer daemon is active. Polling every 12 seconds for new deposits...");
-    setInterval(processDeposits, 12_000);
+    console.log("Relayer daemon is active. Polling every 12 seconds for new deposits and withdrawals...");
+    setInterval(processLoop, 12_000);
   }
 }
 

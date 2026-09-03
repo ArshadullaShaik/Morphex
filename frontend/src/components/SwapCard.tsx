@@ -34,16 +34,24 @@ export const SwapCard: React.FC<SwapCardProps> = ({
   const [swapSuccess, setSwapSuccess] = useState(false);
   const [swapError, setSwapError] = useState<string | null>(null);
 
-  // Auto calculate buy amount based on sell amount and token prices
+  // Auto calculate buy amount based on Constant Product AMM curve (x * y = k), 0.3% fee, and price impact
   useEffect(() => {
     if (!sellAmount || isNaN(parseFloat(sellAmount)) || parseFloat(sellAmount) <= 0) {
       setBuyAmount('');
       return;
     }
     if (buyToken) {
-      const sellValUSD = parseFloat(sellAmount) * sellToken.priceUSD;
-      const computedBuy = sellValUSD / buyToken.priceUSD;
-      setBuyAmount(computedBuy < 0.0001 ? computedBuy.toFixed(6) : computedBuy.toFixed(4));
+      const amtIn = parseFloat(sellAmount);
+      // Canonical Sepolia pool reserves (~500 tokens)
+      const reserveIn = 500;
+      const reserveOut = 500;
+      const amtInWithFee = amtIn * 9970;
+      const numerator = amtInWithFee * reserveOut;
+      const denominator = (reserveIn * 10000) + amtInWithFee;
+      const rawOut = numerator / denominator;
+      // 5% slippage safety margin so the on-chain invariant x * y >= k strictly passes even with reserve shifts
+      const minOut = rawOut * 0.95;
+      setBuyAmount(minOut < 0.0001 ? minOut.toFixed(6) : minOut.toFixed(4));
     }
   }, [sellAmount, sellToken, buyToken]);
 

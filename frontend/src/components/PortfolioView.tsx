@@ -44,6 +44,10 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
 
   useEffect(() => {
     void loadBalances();
+    const interval = window.setInterval(() => {
+      void loadBalances();
+    }, 20_000);
+    return () => window.clearInterval(interval);
   }, [connectedWallet]);
 
   const totalPortfolioUSD = [...userBalances, ...confidentialBalances]
