@@ -144,9 +144,6 @@ export const SwapCard: React.FC<SwapCardProps> = ({
           <div className="flex items-center gap-4">
             <span className="font-semibold text-[#0D111C] text-sm cursor-pointer">Swap</span>
             <span className="text-[#6B7280] hover:text-[#0D111C] cursor-pointer font-medium transition-colors text-sm">
-              Limit
-            </span>
-            <span className="text-[#6B7280] hover:text-[#0D111C] cursor-pointer font-medium transition-colors text-sm">
               Send
             </span>
           </div>

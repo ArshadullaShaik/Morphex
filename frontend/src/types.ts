@@ -24,4 +24,4 @@ export interface SwapState {
   isExactIn: boolean;
 }
 
-export type ActiveNavTab = 'Trade' | 'Explore' | 'Launches' | 'Pool' | 'Portfolio' | 'Vault';
+export type ActiveNavTab = 'Trade' | 'Explore' | 'Pool' | 'Portfolio' | 'Vault';
