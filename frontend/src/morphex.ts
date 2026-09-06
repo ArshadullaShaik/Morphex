@@ -8,7 +8,11 @@ export const LOCAL_CHAIN_ID = 31337;
 
 const pairAbi = [
   'function token0() view returns (address)',
+  'function token1() view returns (address)',
   'function swapExactInput(bool,bytes32,bytes32,bytes,bytes) returns (bytes32)',
+  'function addLiquidity(bytes32,bytes32,bytes32,bytes,bytes,bytes) returns (bytes32)',
+  'function removeLiquidity(bytes32,bytes32,bytes32,bytes,bytes,bytes) returns (bytes32,bytes32)',
+  'function lpBalanceOf(address) view returns (bytes32)',
 ];
 
 const erc7984Abi = [
@@ -337,4 +341,76 @@ export async function claimEscapedWithdrawal(signer: JsonRpcSigner, requestId: b
   await useConfiguredNetwork();
   const vault = new Contract(config.vaultAddress, vaultWithdrawalAbi, signer);
   return (await vault.claimEscapedWithdrawal(requestId)).wait();
+}
+
+export async function submitAddLiquidity(
+  signer: JsonRpcSigner,
+  address: string,
+  pairAddress: string,
+  token0Address: string,
+  token1Address: string,
+  amount0: bigint,
+  amount1: bigint,
+  shareTarget: bigint,
+) {
+  if (!hasContractConfig()) throw new Error('Deploy testnet contracts before adding liquidity.');
+  if (config.chainId !== TESTNET_CHAIN_ID) {
+    throw new Error('Confidential liquidity requires Sepolia deployment with Zama relayer.');
+  }
+  await useConfiguredNetwork();
+  await initializeFheSdk();
+  const fhevm = await createInstance({ ...SepoliaConfigV2, network: getEthereum() });
+
+  const pair = new Contract(pairAddress, pairAbi, signer);
+  const token0Contract = new Contract(token0Address, erc7984Abi, signer);
+  const token1Contract = new Contract(token1Address, erc7984Abi, signer);
+
+  const expiry = Math.floor(Date.now() / 1000) + 3600;
+  await (await token0Contract.setOperator(pairAddress, expiry)).wait();
+  await (await token1Contract.setOperator(pairAddress, expiry)).wait();
+
+  const encrypted0 = await fhevm.createEncryptedInput(pairAddress, address).add64(amount0).encrypt();
+  const encrypted1 = await fhevm.createEncryptedInput(pairAddress, address).add64(amount1).encrypt();
+  const encryptedShares = await fhevm.createEncryptedInput(pairAddress, address).add64(shareTarget).encrypt();
+
+  return pair.addLiquidity(
+    encrypted0.handles[0],
+    encrypted1.handles[0],
+    encryptedShares.handles[0],
+    encrypted0.inputProof,
+    encrypted1.inputProof,
+    encryptedShares.inputProof,
+  );
+}
+
+export async function submitRemoveLiquidity(
+  signer: JsonRpcSigner,
+  address: string,
+  pairAddress: string,
+  shares: bigint,
+  amount0: bigint,
+  amount1: bigint,
+) {
+  if (!hasContractConfig()) throw new Error('Deploy testnet contracts before removing liquidity.');
+  if (config.chainId !== TESTNET_CHAIN_ID) {
+    throw new Error('Confidential liquidity requires Sepolia deployment with Zama relayer.');
+  }
+  await useConfiguredNetwork();
+  await initializeFheSdk();
+  const fhevm = await createInstance({ ...SepoliaConfigV2, network: getEthereum() });
+
+  const pair = new Contract(pairAddress, pairAbi, signer);
+
+  const encryptedShares = await fhevm.createEncryptedInput(pairAddress, address).add64(shares).encrypt();
+  const encrypted0 = await fhevm.createEncryptedInput(pairAddress, address).add64(amount0).encrypt();
+  const encrypted1 = await fhevm.createEncryptedInput(pairAddress, address).add64(amount1).encrypt();
+
+  return pair.removeLiquidity(
+    encryptedShares.handles[0],
+    encrypted0.handles[0],
+    encrypted1.handles[0],
+    encryptedShares.inputProof,
+    encrypted0.inputProof,
+    encrypted1.inputProof,
+  );
 }

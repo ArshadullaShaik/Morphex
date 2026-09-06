@@ -8,7 +8,6 @@ import { SettingsModal } from './components/SettingsModal';
 import { ConnectWalletModal } from './components/ConnectWalletModal';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
 import { ExploreView } from './components/ExploreView';
-import { LaunchesView } from './components/LaunchesView';
 import { PoolView } from './components/PoolView';
 import { PortfolioView } from './components/PortfolioView';
 import { RedemptionView } from './components/RedemptionView';
@@ -131,10 +130,6 @@ export default function App() {
           <ExploreView onSelectToken={handleGlobalSelectToken} />
         )}
 
-        {activeTab === 'Launches' && (
-          <LaunchesView />
-        )}
-
         {activeTab === 'Pool' && (
           <PoolView />
         )}
@@ -177,7 +172,7 @@ export default function App() {
                     : 'text-[#6B7280] hover:text-[#0D111C]'
                 }`}
               >
-                UPI On-Ramp
+                UPI
               </button>
             </div>
 
