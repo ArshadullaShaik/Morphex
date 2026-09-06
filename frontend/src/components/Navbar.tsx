@@ -67,18 +67,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             Explore
           </button>
 
-          <button
-            id="nav-launches"
-            onClick={() => onTabChange('Launches')}
-            className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5 ${
-              activeTab === 'Launches' ? 'bg-[#F3F4F6] text-[#0D111C]' : 'text-[#6B7280] hover:text-[#0D111C] hover:bg-[#F9FAFB]'
-            }`}
-          >
-            <span>Launches</span>
-            <span className="bg-[#00E5FF]/20 text-[#0E7490] text-[10px] font-bold px-1.5 py-0.2 rounded font-mono">
-              BETA
-            </span>
-          </button>
 
           <button
             id="nav-pool"
@@ -224,12 +212,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             Explore
           </button>
-          <button
-            onClick={() => { onTabChange('Launches'); setShowMobileNav(false); }}
-            className={`p-2.5 rounded-xl text-left font-semibold text-sm ${activeTab === 'Launches' ? 'bg-[#F3F4F6] text-[#0D111C]' : 'text-[#4B5563]'}`}
-          >
-            Launches
-          </button>
+
           <button
             onClick={() => { onTabChange('Pool'); setShowMobileNav(false); }}
             className={`p-2.5 rounded-xl text-left font-semibold text-sm ${activeTab === 'Pool' ? 'bg-[#F3F4F6] text-[#0D111C]' : 'text-[#4B5563]'}`}
