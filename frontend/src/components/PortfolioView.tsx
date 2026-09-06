@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Wallet, ArrowUpRight, ArrowDownLeft, LoaderCircle, RefreshCw, Droplets, TrendingUp, ShieldCheck, Lock, Layers } from 'lucide-react';
+import { Wallet, ArrowUpRight, ArrowDownLeft, LoaderCircle, RefreshCw, Droplets, TrendingUp, ShieldCheck, Lock, Layers, History, Sparkles, CheckCircle2 } from 'lucide-react';
 import { fetchPortfolioBalances } from '../morphex';
 import { getUserPositions, getTotalUserLiquidityUSD, LiquidityPosition } from '../data/liquidityStore';
+import { getAllMintedBalances, getMintTransactions, MintTransaction, ONRAMP_TOKEN_PRICES } from '../data/onRampStore';
 import { Token } from '../types';
 import { TokenIcon } from './TokenIcon';
 
@@ -9,6 +10,13 @@ interface PortfolioViewProps {
   connectedWallet: string | null;
   onOpenWallet: () => void;
 }
+
+const KNOWN_CONFIDENTIAL_TOKENS: Record<string, Token> = {
+  cUSDC: { symbol: 'cUSDC', name: 'USD Coin (Confidential)', address: '', decimals: 6, priceUSD: 1.0, verified: true, available: true, chain: 'Sepolia' },
+  cUSDT: { symbol: 'cUSDT', name: 'Tether USD (Confidential)', address: '', decimals: 6, priceUSD: 1.0, verified: true, available: true, chain: 'Sepolia' },
+  mUSD: { symbol: 'mUSD', name: 'Morphex USD', address: '', decimals: 6, priceUSD: 1.0, verified: true, available: true, chain: 'Morphex L2' },
+  MORPH: { symbol: 'MORPH', name: 'Morphex Token', address: '', decimals: 6, priceUSD: 2.85, verified: true, available: true, chain: 'Morphex L2' },
+};
 
 export const PortfolioView: React.FC<PortfolioViewProps> = ({
   connectedWallet,
@@ -18,8 +26,15 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
   const [userBalances, setUserBalances] = useState<Array<{ token: Token; balance: string }>>([]);
   const [confidentialBalances, setConfidentialBalances] = useState<Array<{ token: Token; balance: string }>>([]);
   const [userPositions, setUserPositions] = useState<LiquidityPosition[]>([]);
+  const [mintedBalances, setMintedBalances] = useState<Record<string, number>>({});
+  const [mintHistory, setMintHistory] = useState<MintTransaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  const syncMinted = () => {
+    setMintedBalances(getAllMintedBalances(connectedWallet));
+    setMintHistory(getMintTransactions(connectedWallet));
+  };
 
   const loadBalances = async () => {
     if (!connectedWallet) return;
@@ -51,21 +66,80 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
   useEffect(() => {
     void loadBalances();
     syncPositions();
+    syncMinted();
 
-    const handleUpdate = () => syncPositions();
+    const handleUpdate = () => {
+      syncPositions();
+      syncMinted();
+    };
+    const handleMinted = () => {
+      syncMinted();
+      void loadBalances();
+    };
+
     window.addEventListener('liquidity-updated', handleUpdate);
-    return () => window.removeEventListener('liquidity-updated', handleUpdate);
+    window.addEventListener('onramp-minted', handleMinted);
+    return () => {
+      window.removeEventListener('liquidity-updated', handleUpdate);
+      window.removeEventListener('onramp-minted', handleMinted);
+    };
   }, [connectedWallet]);
 
-  // Token balances total USD
-  const tokenBalancesUSD = [...userBalances, ...confidentialBalances]
-    .reduce((acc, curr) => acc + Number(curr.balance) * curr.token.priceUSD, 0);
+  // Combine confidential balances with UPI minted token balances
+  const effectiveConfidentialBalances: Array<{ token: Token; balance: string; mintedPortion: number }> = [];
+  const handledSymbols = new Set<string>();
+
+  for (const item of confidentialBalances) {
+    const sym = item.token.symbol;
+    handledSymbols.add(sym);
+    const extraMinted = mintedBalances[sym] || 0;
+    const totalBalance = (Number(item.balance) + extraMinted).toString();
+    effectiveConfidentialBalances.push({
+      token: {
+        ...item.token,
+        priceUSD: item.token.priceUSD || ONRAMP_TOKEN_PRICES[sym] || 1,
+      },
+      balance: totalBalance,
+      mintedPortion: extraMinted,
+    });
+  }
+
+  // Add any tokens minted via UPI that are not yet in on-chain confidential balances
+  for (const [sym, amount] of Object.entries(mintedBalances)) {
+    if (!handledSymbols.has(sym) && amount > 0) {
+      const templateToken = KNOWN_CONFIDENTIAL_TOKENS[sym] || {
+        symbol: sym,
+        name: `${sym} Asset`,
+        address: '',
+        decimals: 6,
+        priceUSD: ONRAMP_TOKEN_PRICES[sym] || 1,
+        verified: true,
+        available: true,
+        chain: 'Sepolia',
+      };
+      effectiveConfidentialBalances.push({
+        token: templateToken,
+        balance: amount.toString(),
+        mintedPortion: amount,
+      });
+    }
+  }
+
+  // Token balances total USD (standard ERC-20 + confidential + minted)
+  const tokenBalancesUSD = userBalances.reduce((acc, curr) => acc + Number(curr.balance) * curr.token.priceUSD, 0)
+    + effectiveConfidentialBalances.reduce((acc, curr) => acc + Number(curr.balance) * curr.token.priceUSD, 0);
 
   // Total liquidity deposited in pool positions USD
   const liquidityValueUSD = getTotalUserLiquidityUSD();
 
   // Total Portfolio Net Worth
   const totalNetWorthUSD = tokenBalancesUSD + liquidityValueUSD;
+
+  // Total value minted via UPI
+  const totalMintedUSD = Object.entries(mintedBalances).reduce((sum, [sym, amt]) => {
+    const price = ONRAMP_TOKEN_PRICES[sym] || 1.0;
+    return sum + amt * price;
+  }, 0);
 
   // Estimated Annual Yield (p.a.)
   const estAnnualYieldUSD = userPositions.reduce((sum, p) => {
@@ -82,7 +156,7 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
           </div>
           <h2 className="text-xl font-bold text-[#0D111C]">Connect a wallet</h2>
           <p className="text-xs text-[#6B7280] mt-1.5 mb-6 max-w-xs mx-auto">
-            View your tokens, tracked LP positions, and swap history across Ethereum and Layer 2s.
+            View your tokens, tracked LP positions, and UPI minted assets across Ethereum and Layer 2s.
           </p>
           <button
             onClick={onOpenWallet}
@@ -106,6 +180,11 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
               <span className="bg-[#ECFDF5] text-[#047857] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
                 <ShieldCheck className="w-3 h-3 text-[#10B981]" /> Live Portfolio
               </span>
+              {totalMintedUSD > 0 && (
+                <span className="bg-[#E0F2FE] text-[#0284C7] text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-[#00E5FF]" /> UPI Minted: +${totalMintedUSD.toFixed(2)}
+                </span>
+              )}
             </div>
             <div className="text-4xl font-extrabold text-[#0D111C] tracking-tight mt-1 font-mono">
               {isLoading ? <LoaderCircle className="h-8 w-8 animate-spin text-[#00E5FF]" /> : `$${totalNetWorthUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -145,7 +224,9 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
             <div className="text-xl font-bold text-[#0D111C] font-mono">
               ${tokenBalancesUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <div className="text-[11px] text-[#6B7280] mt-1">Liquid wallet assets</div>
+            <div className="text-[11px] text-[#6B7280] mt-1">
+              Liquid & UPI minted tokens
+            </div>
           </div>
 
           <div className="p-4 rounded-2xl bg-[#ECFDF5] border border-[#A7F3D0]">
@@ -271,24 +352,38 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
         </div>
       </div>
 
-      {/* Section 3: Confidential FHE Assets */}
+      {/* Section 3: Confidential & UPI Minted Assets */}
       <div className="bg-white rounded-3xl border border-[#E5E7EB] shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-[#E5E7EB] flex items-center justify-between">
-          <h3 className="font-bold text-sm text-[#0D111C]">Confidential Encrypted Assets</h3>
-          <span className="text-xs text-[#6B7280] font-mono">{confidentialBalances.length} tokens</span>
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-[#00E5FF]" />
+            <h3 className="font-bold text-sm text-[#0D111C]">Confidential & UPI Minted Assets</h3>
+          </div>
+          <span className="text-xs text-[#6B7280] font-mono">{effectiveConfidentialBalances.length} tokens</span>
         </div>
         <div className="divide-y divide-[#F3F4F6]">
-          {confidentialBalances.map((item) => (
+          {effectiveConfidentialBalances.map((item) => (
             <div key={item.token.symbol} className="p-4 flex items-center justify-between hover:bg-[#F9FAFB] transition-colors">
               <div className="flex items-center gap-3">
                 <TokenIcon symbol={item.token.symbol} size="md" />
                 <div>
-                  <div className="font-semibold text-xs text-[#0D111C]">{item.token.name}</div>
-                  <div className="text-[11px] text-[#6B7280]">{Number(item.balance).toLocaleString(undefined, { maximumFractionDigits: 6 })} {item.token.symbol}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-xs text-[#0D111C]">{item.token.name}</span>
+                    {item.mintedPortion > 0 && (
+                      <span className="bg-[#ECFDF5] text-[#047857] text-[10px] font-bold px-2 py-0.5 rounded-md border border-[#A7F3D0]">
+                        UPI Minted: +{item.mintedPortion.toFixed(4)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-[#6B7280] font-mono">
+                    {Number(item.balance).toLocaleString(undefined, { maximumFractionDigits: 4 })} {item.token.symbol}
+                  </div>
                 </div>
               </div>
               <div className="text-right">
-                <div className="font-semibold text-xs text-[#0D111C] font-mono">${(Number(item.balance) * item.token.priceUSD).toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+                <div className="font-semibold text-xs text-[#0D111C] font-mono">
+                  ${(Number(item.balance) * item.token.priceUSD).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </div>
                 <div className="text-[11px] font-mono text-[#059669] flex items-center gap-1 justify-end">
                   <Lock className="w-3 h-3" /> FHE Encrypted
                 </div>
@@ -296,6 +391,72 @@ export const PortfolioView: React.FC<PortfolioViewProps> = ({
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Section 4: UPI On-Ramp Mint Transactions Ledger */}
+      <div className="bg-white rounded-3xl border border-[#E5E7EB] shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-[#E5E7EB] flex items-center justify-between bg-[#F8FAFC]">
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-[#00E5FF]" />
+            <h3 className="font-bold text-sm text-[#0D111C]">UPI Mint Ledger & Proof of Settlement</h3>
+          </div>
+          <span className="text-xs font-semibold text-[#0369A1] bg-[#E0F2FE] px-2.5 py-1 rounded-full border border-[#BAE6FD]">
+            {mintHistory.length} On-Ramp Records
+          </span>
+        </div>
+
+        {mintHistory.length === 0 ? (
+          <div className="p-8 text-center text-xs text-[#6B7280]">
+            No UPI on-ramp mints recorded yet. Go to <strong>Vault → UPI</strong> to scan the QR code and mint tokens to your wallet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-[#F9FAFB] border-b border-[#E5E7EB] text-[#6B7280] uppercase tracking-wider font-semibold">
+                <tr>
+                  <th className="py-3 px-5">Date / Time</th>
+                  <th className="py-3 px-5">Paid INR</th>
+                  <th className="py-3 px-5">Minted Asset</th>
+                  <th className="py-3 px-5">Razorpay Ref ID</th>
+                  <th className="py-3 px-5">On-Chain Tx Hash</th>
+                  <th className="py-3 px-5 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#F3F4F6]">
+                {mintHistory.map((tx) => (
+                  <tr key={tx.id} className="hover:bg-[#F9FAFB] transition-colors">
+                    <td className="py-4 px-5 text-[#6B7280] whitespace-nowrap">
+                      {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}
+                    </td>
+                    <td className="py-4 px-5 font-bold text-[#0D111C] font-mono">
+                      ₹{tx.amountInr.toLocaleString()} INR
+                    </td>
+                    <td className="py-4 px-5">
+                      <div className="flex items-center gap-2">
+                        <TokenIcon symbol={tx.tokenSymbol} size="sm" />
+                        <span className="font-bold text-[#047857] font-mono text-sm">+{tx.tokenAmount.toFixed(4)} {tx.tokenSymbol}</span>
+                      </div>
+                    </td>
+                    <td className="py-4 px-5 font-mono text-[#4B5563]">
+                      {tx.paymentId}
+                    </td>
+                    <td className="py-4 px-5 font-mono text-[#6B7280]">
+                      <span title={tx.txHash}>
+                        {tx.txHash.slice(0, 10)}...{tx.txHash.slice(-8)}
+                      </span>
+                    </td>
+                    <td className="py-4 px-5 text-right">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#ECFDF5] px-2.5 py-1 text-[11px] font-bold text-[#047857] border border-[#A7F3D0]">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-[#10B981]" />
+                        Minted
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
