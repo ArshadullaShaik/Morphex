@@ -144,7 +144,7 @@ export const SwapCard: React.FC<SwapCardProps> = ({
 
       {/* Primary Swap Card Container */}
       <div 
-        id="uniswap-swap-card"
+        id="morphex-swap-card"
         className="w-full bg-white rounded-3xl p-3 border border-[#E5E7EB] shadow-sm relative"
       >
         {/* Card Header Toolbar */}
@@ -315,7 +315,7 @@ export const SwapCard: React.FC<SwapCardProps> = ({
             </div>
             <div className="flex items-center justify-between text-[#6B7280]">
               <span>Order Routing</span>
-              <span className="font-semibold text-[#0D111C]">Uniswap Smart Router</span>
+              <span className="font-semibold text-[#0D111C]">Morphex Smart Router</span>
             </div>
           </div>
         )}

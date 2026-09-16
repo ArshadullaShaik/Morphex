@@ -19,6 +19,7 @@ const erc7984Abi = [
   'function setOperator(address,uint48)',
   'function underlyingToken() view returns (address)',
   'function relayerBurnRequest(bytes32,bytes,uint256) returns (uint256)',
+  'function relayerBurnRequestTo(address,bytes32,bytes,uint256) returns (uint256)',
 ];
 const erc20BalanceAbi = [
   'function balanceOf(address) view returns (uint256)',
@@ -29,7 +30,7 @@ const confidentialBalanceAbi = [
   'function decimals() view returns (uint8)',
 ];
 const vaultWithdrawalAbi = [
-  'function getWithdrawalRequest(uint256) view returns (address user,address token,uint256 amount,uint256 requestedAt,bool fulfilled,bool escaped)',
+  'function getWithdrawalRequest(uint256) view returns (address user,address recipient,address token,uint256 amount,uint256 requestedAt,bool fulfilled,bool escaped)',
   'function claimEscapedWithdrawal(uint256)',
 ];
 
@@ -320,6 +321,30 @@ export async function submitConfidentialRedemption(
   return { requestId, underlyingToken };
 }
 
+export async function submitConfidentialRedemptionTo(
+  signer: JsonRpcSigner,
+  address: string,
+  recipientAddress: string,
+  tokenAddress: string,
+  amount: bigint,
+) {
+  if (!config.vaultAddress) throw new Error('Configure the relayer vault before redeeming.');
+  await useConfiguredNetwork();
+  await initializeFheSdk();
+  const fhevm = await createInstance({ ...SepoliaConfigV2, network: getEthereum() });
+  const token = new Contract(tokenAddress, erc7984Abi, signer);
+  const underlyingToken = await token.underlyingToken() as string;
+  const encrypted = await fhevm.createEncryptedInput(tokenAddress, address).add64(amount).encrypt();
+  const requestId = await token.relayerBurnRequestTo.staticCall(
+    recipientAddress,
+    encrypted.handles[0],
+    encrypted.inputProof,
+    amount,
+  ) as bigint;
+  await (await token.relayerBurnRequestTo(recipientAddress, encrypted.handles[0], encrypted.inputProof, amount)).wait();
+  return { requestId, underlyingToken };
+}
+
 export async function fetchWithdrawalRequest(requestId: bigint) {
   if (!config.vaultAddress) throw new Error('Configure the relayer vault before checking withdrawals.');
   await useConfiguredNetwork();
@@ -328,6 +353,7 @@ export async function fetchWithdrawalRequest(requestId: bigint) {
   const request = await vault.getWithdrawalRequest(requestId);
   return {
     user: request.user as string,
+    recipient: request.recipient as string,
     token: request.token as string,
     amount: request.amount as bigint,
     requestedAt: request.requestedAt as bigint,

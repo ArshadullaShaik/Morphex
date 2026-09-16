@@ -23,6 +23,7 @@ contract RelayerVault is ReentrancyGuard, AccessControl {
 
     struct WithdrawalRequest {
         address user;
+        address recipient;
         address token;
         uint256 amount;
         uint256 requestedAt;
@@ -44,6 +45,7 @@ contract RelayerVault is ReentrancyGuard, AccessControl {
         address indexed user,
         uint256 indexed requestId,
         address indexed token,
+        address recipient,
         uint256 amount,
         uint256 requestedAt
     );
@@ -96,19 +98,37 @@ contract RelayerVault is ReentrancyGuard, AccessControl {
         emit Deposited(msg.sender, token, amount, block.timestamp);
     }
 
-    /// @notice Registers a user intent to withdraw public funds. Called from the confidential burn bridge.
+    /// @notice Registers a user intent to withdraw public funds to their own address. Called from the confidential burn bridge.
     function registerWithdrawalRequest(address user, address token, uint256 amount)
         external
         nonReentrant
         returns (uint256 requestId)
     {
+        return _registerWithdrawalRequest(user, user, token, amount);
+    }
+
+    /// @notice Registers a user intent to withdraw public funds to a different recipient. Called from the confidential burn bridge.
+    function registerWithdrawalRequestTo(address user, address recipient, address token, uint256 amount)
+        external
+        nonReentrant
+        returns (uint256 requestId)
+    {
+        return _registerWithdrawalRequest(user, recipient, token, amount);
+    }
+
+    function _registerWithdrawalRequest(address user, address recipient, address token, uint256 amount)
+        internal
+        returns (uint256 requestId)
+    {
         require(user != address(0), "RelayerVault: zero user");
+        require(recipient != address(0), "RelayerVault: zero recipient");
         require(token != address(0), "RelayerVault: zero token");
         require(amount > 0, "RelayerVault: zero amount");
 
         requestId = ++nextRequestId;
         withdrawalRequests[requestId] = WithdrawalRequest({
             user: user,
+            recipient: recipient,
             token: token,
             amount: amount,
             requestedAt: block.timestamp,
@@ -116,7 +136,7 @@ contract RelayerVault is ReentrancyGuard, AccessControl {
             escaped: false
         });
 
-        emit WithdrawalRequested(user, requestId, token, amount, block.timestamp);
+        emit WithdrawalRequested(user, requestId, token, recipient, amount, block.timestamp);
     }
 
     /// @notice Pays out a batch of withdrawals in one transaction, authorized by the relayer role.
@@ -137,7 +157,7 @@ contract RelayerVault is ReentrancyGuard, AccessControl {
                 WithdrawalRequest storage request = withdrawalRequests[requestIds[i]];
                 require(request.user != address(0), "RelayerVault: unknown request");
                 require(!request.fulfilled, "RelayerVault: already fulfilled");
-                require(payout.recipient == request.user, "RelayerVault: recipient mismatch");
+                require(payout.recipient == request.recipient, "RelayerVault: recipient mismatch");
                 require(payout.token == request.token, "RelayerVault: token mismatch");
                 require(payout.amount == request.amount, "RelayerVault: amount mismatch");
                 request.fulfilled = true;
@@ -160,7 +180,7 @@ contract RelayerVault is ReentrancyGuard, AccessControl {
         request.fulfilled = true;
         request.escaped = true;
 
-        SafeERC20.safeTransfer(IERC20(request.token), msg.sender, request.amount);
+        SafeERC20.safeTransfer(IERC20(request.token), request.recipient, request.amount);
         emit EscapeHatchClaimed(requestId, request.user, request.token, request.amount, block.timestamp);
         emit Withdrawn(msg.sender, request.token, request.amount, block.timestamp);
     }
@@ -174,11 +194,12 @@ contract RelayerVault is ReentrancyGuard, AccessControl {
     function getWithdrawalRequest(uint256 requestId)
         external
         view
-        returns (address user, address token, uint256 amount, uint256 requestedAt, bool fulfilled, bool escaped)
+        returns (address user, address recipient, address token, uint256 amount, uint256 requestedAt, bool fulfilled, bool escaped)
     {
         WithdrawalRequest storage request = withdrawalRequests[requestId];
         return (
             request.user,
+            request.recipient,
             request.token,
             request.amount,
             request.requestedAt,

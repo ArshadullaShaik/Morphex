@@ -9,6 +9,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IRelayerVault {
     function registerWithdrawalRequest(address user, address token, uint256 amount) external returns (uint256 requestId);
+    function registerWithdrawalRequestTo(address user, address recipient, address token, uint256 amount) external returns (uint256 requestId);
 }
 
 contract MorphexToken is ERC7984, ZamaEthereumConfig, Ownable, AccessControl {
@@ -25,6 +26,7 @@ contract MorphexToken is ERC7984, ZamaEthereumConfig, Ownable, AccessControl {
     event RelayerUpdated(address indexed relayer);
     event UnderlyingTokenUpdated(address indexed token);
     event BurnRequested(address indexed user, uint256 indexed requestId, uint256 amount);
+    event BurnRequestedTo(address indexed user, address indexed recipient, uint256 indexed requestId, uint256 amount);
 
     constructor(
         string memory tokenName,
@@ -103,5 +105,23 @@ contract MorphexToken is ERC7984, ZamaEthereumConfig, Ownable, AccessControl {
         _burn(msg.sender, encAmount);
         requestId = IRelayerVault(relayerVault).registerWithdrawalRequest(msg.sender, underlyingToken, publicAmount);
         emit BurnRequested(msg.sender, requestId, publicAmount);
+    }
+
+    /// @notice Burns a caller's confidential balance and registers a public withdrawal to a different recipient.
+    function relayerBurnRequestTo(
+        address recipient,
+        externalEuint64 encryptedAmount,
+        bytes calldata inputProof,
+        uint256 publicAmount
+    ) external returns (uint256 requestId) {
+        require(relayerVault != address(0), "Morphex: no vault");
+        require(underlyingToken != address(0), "Morphex: no underlying token");
+        require(recipient != address(0), "Morphex: zero recipient");
+        require(publicAmount > 0, "Morphex: zero amount");
+
+        euint64 encAmount = FHE.fromExternal(encryptedAmount, inputProof);
+        _burn(msg.sender, encAmount);
+        requestId = IRelayerVault(relayerVault).registerWithdrawalRequestTo(msg.sender, recipient, underlyingToken, publicAmount);
+        emit BurnRequestedTo(msg.sender, recipient, requestId, publicAmount);
     }
 }

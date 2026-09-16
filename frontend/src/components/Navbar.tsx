@@ -23,7 +23,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       id="dex-navbar" 
       className="relative z-30 w-full px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between border-b border-[#E5E7EB] bg-white text-[#0D111C]"
     >
-      {/* Left section: Uniswap Brand & Navigation Links */}
+      {/* Left section: Morphex Brand & Navigation Links */}
       <div className="flex items-center gap-6 lg:gap-8">
         {/* Brand Logo */}
         <button
@@ -32,7 +32,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           className="flex items-center gap-2.5 text-left focus:outline-none"
         >
           <div className="w-8 h-8 rounded-full bg-[#00E5FF] flex items-center justify-center shadow-sm">
-            {/* Uniswap iconic unicorn horn vector */}
+            {/* Morphex logo icon */}
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path 
                 d="M12 2L14.2 8.5L21 9.5L16 14L17.5 21L12 17.5L6.5 21L8 14L3 9.5L9.8 8.5L12 2Z" 
@@ -41,7 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </svg>
           </div>
           <span className="text-lg font-bold tracking-tight text-[#0D111C]">
-            Uniswap
+            Morphex
           </span>
         </button>
 

@@ -137,8 +137,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         {/* Smart Routing */}
         <div className="mt-4 pt-4 border-t border-[#F3F4F6] flex items-center justify-between text-xs">
           <div>
-            <div className="font-semibold text-[#0D111C]">Uniswap Smart Order Router</div>
-            <div className="text-[11px] text-[#6B7280]">Automatically routes across Uniswap V2, V3 and UniswapX</div>
+            <div className="font-semibold text-[#0D111C]">Morphex Smart Order Router</div>
+            <div className="text-[11px] text-[#6B7280]">Automatically routes across Morphex confidential AMM pools</div>
           </div>
           <span className="text-[11px] font-bold text-[#10B981] bg-[#ECFDF5] px-2 py-0.5 rounded-full">
             Active
