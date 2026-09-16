@@ -14,6 +14,7 @@ import { RedemptionView } from './components/RedemptionView';
 import { OnRampView } from './components/OnRampView';
 import { VaultView } from './components/VaultView';
 import { ETHEREUM_TOKEN, fetchTokenPrices, TESTNET_TOKENS } from './data/tokens';
+import { getMintedTokenBalance } from './data/onRampStore';
 import { Token, ActiveNavTab } from './types';
 
 export default function App() {
@@ -29,10 +30,22 @@ export default function App() {
   const [deadline, setDeadline] = useState<number>(20);
   const [connectedWallet, setConnectedWallet] = useState<string | null>(null);
   const [tokenPrices, setTokenPrices] = useState<Record<string, number>>({});
-  const liveTokens = TESTNET_TOKENS.map((token) => ({
-    ...token,
-    priceUSD: tokenPrices[token.symbol.replace(/^c/, '')] ?? token.priceUSD,
-  }));
+  const [mintVersion, setMintVersion] = useState(0);
+
+  useEffect(() => {
+    const handleMint = () => setMintVersion((v) => v + 1);
+    window.addEventListener('onramp-minted', handleMint);
+    return () => window.removeEventListener('onramp-minted', handleMint);
+  }, []);
+
+  const liveTokens = TESTNET_TOKENS.map((token) => {
+    const minted = getMintedTokenBalance(token.symbol, connectedWallet);
+    return {
+      ...token,
+      priceUSD: tokenPrices[token.symbol.replace(/^c/, '')] ?? token.priceUSD,
+      balance: minted > 0 ? minted.toFixed(4) : token.balance,
+    };
+  });
 
   useEffect(() => {
     let active = true;
@@ -183,7 +196,11 @@ export default function App() {
               <RedemptionView connectedWallet={connectedWallet} onOpenWallet={() => setIsWalletModalOpen(true)} />
             )}
             {vaultSubTab === 'onramp' && (
-              <OnRampView connectedWallet={connectedWallet} onOpenWallet={() => setIsWalletModalOpen(true)} />
+              <OnRampView
+                connectedWallet={connectedWallet}
+                onOpenWallet={() => setIsWalletModalOpen(true)}
+                onViewPortfolio={() => setActiveTab('Portfolio')}
+              />
             )}
           </div>
         )}
