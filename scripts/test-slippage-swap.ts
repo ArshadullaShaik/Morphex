@@ -32,9 +32,11 @@ async function main() {
     fhevm.createEncryptedInput(pairAddress, signer.address).add64(amountOutTarget).encrypt(),
   ]);
 
-  console.log("Submitting swapExactInput...");
+  const token0 = await pair.token0();
+  const zeroForOne = token0.toLowerCase() === usdtToken.address.toLowerCase();
+  console.log(`Submitting swapExactInput (zeroForOne: ${zeroForOne})...`);
   const tx = await pair.swapExactInput(
-    false, // zeroForOne = false (sell token1 = cUSDT for token0 = cUSDC)
+    zeroForOne,
     encIn.handles[0],
     encOut.handles[0],
     encIn.inputProof,

@@ -275,7 +275,6 @@ async function fetchConfidentialBalances(address: string, provider: BrowserProvi
 export async function submitPrivateSwap(
   signer: JsonRpcSigner,
   address: string,
-  zeroForOne: boolean,
   amountIn: bigint,
   amountOutTarget: bigint,
   sellTokenAddress: string,

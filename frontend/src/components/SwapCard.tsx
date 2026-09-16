@@ -116,7 +116,6 @@ export const SwapCard: React.FC<SwapCardProps> = ({
       const transaction = await submitPrivateSwap(
         signer,
         connectedWallet,
-        sellToken.symbol === 'MORPH',
         encryptedSellAmount,
         encryptedBuyAmount,
         sellToken.address,

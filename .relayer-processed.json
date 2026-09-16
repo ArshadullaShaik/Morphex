@@ -1,6 +1,12 @@
 {
   "0xbcc1d55a623160e3a73acdbdb793c97952c379800583939eaee958631b20ed98": true,
   "0xa2bf845e0632ffe20f4c3d4ab7d8ee63422bcd701023a4ef383d1ccab3c18504": true,
+  "0x06b80304ddb5e4ff1d07e1507e139fd4daba57a7293cd187ec2a12eccc9b59b2": true,
+  "0x9399347017670f6caa4111b2aca4e790d0808690d33a2ff5c5e30d0031b29094": true,
   "withdrawal_1": true,
-  "withdrawal_2": true
+  "withdrawal_2": true,
+  "withdrawal_3": true,
+  "0x66652dad86f505cebaa53d280de865c3878f3df9f408cfe1ee66cc79df40a84e": true,
+  "withdrawal_4": true,
+  "0x351e4a762d66bc9d0986d7daee1d6626fd217959929e7249de17a2533f94a2a7": true
 }

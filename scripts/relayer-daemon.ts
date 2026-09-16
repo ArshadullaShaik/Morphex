@@ -56,11 +56,14 @@ async function main() {
   }
 
   const processed = await loadProcessed();
+  let polling = false;
 
   console.log(`Watching RelayerVault at: ${vaultAddress}`);
   console.log("Listening for new deposits on Sepolia...\n");
 
   const processLoop = async () => {
+    if (polling) return;
+    polling = true;
     try {
       const currentBlock = await ethers.provider.getBlockNumber();
       const filter = vault.filters.Deposited();
@@ -80,28 +83,35 @@ async function main() {
           continue;
         }
 
+        // Mark as processed BEFORE submitting to prevent double-minting on concurrent polls
+        processed[txHash] = true;
+        await saveProcessed(processed);
+
         const amountFormatted = ethers.formatUnits(amount, 6);
         console.log(`\n>>> New Deposit Detected! <<<`);
         console.log(`  Tx:     https://sepolia.etherscan.io/tx/${txHash}`);
         console.log(`  User:   ${user}`);
         console.log(`  Amount: ${amountFormatted} ${mapping.publicSymbol}`);
 
-        const cTokenContract = await ethers.getContractAt("MorphexToken", mapping.confidentialAddress, relayer);
+        try {
+          const cTokenContract = await ethers.getContractAt("MorphexToken", mapping.confidentialAddress, relayer);
 
-        console.log(`  Generating FHE encryption for ${user}...`);
-        const input = fhevm.createEncryptedInput(mapping.confidentialAddress, user);
-        input.add64(BigInt(amount));
-        const encrypted = await input.encrypt();
+          console.log(`  Generating FHE encryption for ${user}...`);
+          const input = fhevm.createEncryptedInput(mapping.confidentialAddress, user);
+          input.add64(BigInt(amount));
+          const encrypted = await input.encrypt();
 
-        console.log(`  Calling relayerMint on ${mapping.confidentialSymbol}...`);
-        const tx = await cTokenContract.relayerMint(user, encrypted.handles[0], encrypted.inputProof);
-        console.log(`  Submitted relayerMint tx: ${tx.hash}`);
-        await tx.wait();
+          console.log(`  Calling relayerMint on ${mapping.confidentialSymbol}...`);
+          const tx = await cTokenContract.relayerMint(user, encrypted.handles[0], encrypted.inputProof);
+          console.log(`  Submitted relayerMint tx: ${tx.hash}`);
+          await tx.wait();
 
-        processed[txHash] = true;
-        await saveProcessed(processed);
-        console.log(`  [SUCCESS] Minted ${amountFormatted} ${mapping.confidentialSymbol} to ${user}!`);
-        console.log(`  Mint Tx: https://sepolia.etherscan.io/tx/${tx.hash}\n`);
+          console.log(`  [SUCCESS] Minted ${amountFormatted} ${mapping.confidentialSymbol} to ${user}!`);
+          console.log(`  Mint Tx: https://sepolia.etherscan.io/tx/${tx.hash}\n`);
+        } catch (mintErr: any) {
+          console.error(`  [ERROR minting for deposit ${txHash}]:`, mintErr.message || mintErr);
+          // Keep it marked as processed to avoid double-minting on retry
+        }
       }
 
       // 2. Check and process pending Withdrawal Requests
@@ -109,7 +119,7 @@ async function main() {
       const withdrawalEvents = await vault.queryFilter(withdrawalFilter, Math.max(0, currentBlock - 500));
 
       for (const e of withdrawalEvents) {
-        const { user, requestId, token, amount } = (e as any).args;
+        const { user, requestId, token, amount, recipient } = (e as any).args;
         const key = `withdrawal_${requestId.toString()}`;
         if (processed[key]) continue;
 
@@ -122,23 +132,33 @@ async function main() {
 
         const amountFormatted = ethers.formatUnits(amount, 6);
         console.log(`\n>>> New Withdrawal Request #${requestId} Detected! <<<`);
-        console.log(`  User:   ${user}`);
+        console.log(`  User:      ${user}`);
+        console.log(`  Recipient: ${recipient}`);
         console.log(`  Amount: ${amountFormatted}`);
 
-        console.log(`  Calling batchWithdraw on RelayerVault...`);
-        const payout = { recipient: user, token, amount };
-        const tx = await vault.batchWithdraw([payout], [requestId]);
-        console.log(`  Submitted batchWithdraw tx: ${tx.hash}`);
-        await tx.wait();
+        try {
+          console.log(`  Calling batchWithdraw on RelayerVault...`);
+          const payout = { recipient, token, amount };
+          const tx = await vault.batchWithdraw([payout], [requestId]);
+          console.log(`  Submitted batchWithdraw tx: ${tx.hash}`);
+          await tx.wait();
 
-        processed[key] = true;
-        await saveProcessed(processed);
-        console.log(`  [SUCCESS] Paid out ${amountFormatted} tokens to ${user}!`);
-        console.log(`  Payout Tx: https://sepolia.etherscan.io/tx/${tx.hash}\n`);
+          processed[key] = true;
+          await saveProcessed(processed);
+          console.log(`  [SUCCESS] Paid out ${amountFormatted} tokens to ${recipient}!`);
+          console.log(`  Payout Tx: https://sepolia.etherscan.io/tx/${tx.hash}\n`);
+        } catch (withdrawErr: any) {
+          // Mark as processed to stop infinite retries — requires manual intervention
+          processed[key] = true;
+          await saveProcessed(processed);
+          console.error(`  [ERROR] Withdrawal #${requestId} failed: ${withdrawErr.message || withdrawErr}`);
+          console.error(`  Marked as processed to stop retries. Manual intervention required.`);
+        }
       }
     } catch (err: any) {
       console.error("  [ERROR during polling]:", err.message || err);
     }
+    polling = false;
   };
 
   // Run immediately
