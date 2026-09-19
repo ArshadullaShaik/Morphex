@@ -17,6 +17,7 @@
     "deposit:usdt": "hardhat run scripts/deposit-usdt.ts --network sepolia",
     "relayer:process-deposits": "hardhat run scripts/relayer-worker.ts --network sepolia",
     "relayer:daemon": "hardhat run scripts/relayer-daemon.ts --network sepolia",
+    "mint:confidential": "hardhat run scripts/mint-user-confidential.ts --network sepolia",
     "fulfill:withdrawal": "hardhat run scripts/fulfill-withdrawal.ts --network sepolia",
     "seed:liquidity": "hardhat run scripts/seed-deep-liquidity.ts --network sepolia",
     "test:swap": "hardhat run scripts/test-private-swap.ts --network sepolia",

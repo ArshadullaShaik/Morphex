@@ -24,4 +24,19 @@ export interface SwapState {
   isExactIn: boolean;
 }
 
-export type ActiveNavTab = 'Trade' | 'Explore' | 'Pool' | 'Portfolio' | 'Vault';
+export type ActiveNavTab = 'Home' | 'Trade' | 'Explore' | 'Pool' | 'Portfolio' | 'Vault' | 'Governance' | 'Docs';
+
+export interface GovernanceProposal {
+  id: string;
+  title: string;
+  description: string;
+  proposer: string;
+  status: 'Active' | 'Passed' | 'Queued' | 'Executed';
+  startDate: string;
+  endDate: string;
+  forVotes: number;
+  againstVotes: number;
+  abstainVotes: number;
+  quorum: number;
+  category: 'Protocol' | 'Treasury' | 'FHEVM Relayer' | 'Security';
+}

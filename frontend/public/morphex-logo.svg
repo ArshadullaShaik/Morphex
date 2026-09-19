@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 638 126" width="638" height="126" fill="none">
+  <g id="emblem" fill="#111827">
+    <path d="M0 0H26L114.5 88.5H63.5L38 63V126H0V0Z" />
+    <path d="M101.5 0H152V51L114.5 88.5V38H63.5L101.5 0Z" />
+    <path d="M114.5 88.5H152V126H114.5V88.5Z" />
+  </g>
+  <text x="195" y="104" fill="#111827" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Helvetica Neue', 'Segoe UI', sans-serif" font-size="102" font-weight="700" letter-spacing="-3.5px">Morphex</text>
+</svg>

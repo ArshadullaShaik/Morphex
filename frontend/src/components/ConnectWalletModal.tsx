@@ -1,5 +1,16 @@
-import React, { useState } from 'react';
-import { X, CheckCircle2, Loader2, ArrowRight, LogOut, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import {
+  X,
+  CheckCircle2,
+  Loader2,
+  ArrowRight,
+  LogOut,
+  ShieldCheck,
+  AlertCircle,
+  ExternalLink,
+  Copy,
+  Check,
+} from 'lucide-react';
 import { connectWallet } from '../morphex';
 
 interface ConnectWalletModalProps {
@@ -40,43 +51,26 @@ const CoinbaseIcon = () => (
 const WalletConnectIcon = () => (
   <svg viewBox="0 0 40 40" fill="none" className="w-full h-full">
     <rect width="40" height="40" rx="10" fill="#3B99FC" fillOpacity="0.1" />
-    <path d="M14.2 17.3c3.2-3.1 8.4-3.1 11.6 0l.4.4c.2.2.2.4 0 .5l-1.3 1.2c-.1.1-.2.1-.3 0l-.5-.5c-2.2-2.2-5.8-2.2-8.1 0l-.6.5c-.1.1-.2.1-.3 0l-1.3-1.2c-.2-.2-.2-.4 0-.5l.4-.4zm14.3 2.7l1.1 1.1c.2.2.2.4 0 .5l-5.2 5.1c-.2.2-.4.2-.6 0l-3.7-3.6c0-.1-.1-.1-.1 0l-3.7 3.6c-.2.2-.4.2-.6 0l-5.2-5.1c-.2-.2-.2-.4 0-.5l1.1-1.1c.2-.2.4-.2.6 0l3.7 3.6c0 .1.1.1.1 0l3.7-3.6c.2-.2.4-.2.6 0l3.7 3.6c0 .1.1.1.1 0l3.7-3.6c.2-.2.5-.2.6 0z" fill="#3B99FC" />
+    <path
+      d="M14.2 17.3c3.2-3.1 8.4-3.1 11.6 0l.4.4c.2.2.2.4 0 .5l-1.3 1.2c-.1.1-.2.1-.3 0l-.5-.5c-2.2-2.2-5.8-2.2-8.1 0l-.6.5c-.1.1-.2.1-.3 0l-1.3-1.2c-.2-.2-.2-.4 0-.5l.4-.4zm14.3 2.7l1.1 1.1c.2.2.2.4 0 .5l-5.2 5.1c-.2.2-.4.2-.6 0l-3.7-3.6c0-.1-.1-.1-.1 0l-3.7 3.6c-.2.2-.4.2-.6 0l-5.2-5.1c-.2-.2-.2-.4 0-.5l1.1-1.1c.2-.2.4-.2.6 0l3.7 3.6c0 .1.1.1.1 0l3.7-3.6c.2-.2.4-.2.6 0l3.7 3.6c0 .1.1.1.1 0l3.7-3.6c.2-.2.5-.2.6 0z"
+      fill="#3B99FC"
+    />
   </svg>
 );
 
-const RainbowIcon = () => (
+const InjectedBrowserIcon = () => (
   <svg viewBox="0 0 40 40" fill="none" className="w-full h-full">
-    <rect width="40" height="40" rx="10" fill="url(#rg)" fillOpacity="0.12" />
-    <defs><linearGradient id="rg" x1="0" y1="0" x2="40" y2="40"><stop stopColor="#FF494A" /><stop offset="0.3" stopColor="#FF7849" /><stop offset="0.5" stopColor="#FFCE3E" /><stop offset="0.7" stopColor="#48DD82" /><stop offset="1" stopColor="#5B63ED" /></linearGradient></defs>
-    <path d="M12 26v-2.5a8 8 0 018-8h0a8 8 0 018 8V26" stroke="url(#rg)" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-    <path d="M15.5 26v-2.5a4.5 4.5 0 014.5-4.5h0a4.5 4.5 0 014.5 4.5V26" stroke="url(#rg)" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-    <circle cx="20" cy="25.5" r="1.8" fill="url(#rg)" />
+    <rect width="40" height="40" rx="10" fill="#7342E2" fillOpacity="0.12" />
+    <path
+      d="M20 10L28 15V25L20 30L12 25V15L20 10Z"
+      stroke="#7342E2"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <circle cx="20" cy="20" r="4" fill="#7342E2" />
   </svg>
 );
-
-const UniswapIcon = () => (
-  <svg viewBox="0 0 40 40" fill="none" className="w-full h-full">
-    <rect width="40" height="40" rx="10" fill="#FF007A" fillOpacity="0.1" />
-    <path d="M17.2 12.8c-.3 0-.4-.1-.4-.2 0-.2.3-.3.7-.2 1.7.3 2.5 1.3 3 2.2.5.9.7 1.8.7 2.2 0 .3-.1.5-.1.8 0 .1-.1.3-.1.5 0 .5.2.8.5 1 .2.2.5.3.7.3.1 0 .2 0 .3-.1.2-.1.3-.2.3-.3 0-.1-.1-.2-.2-.3-.2-.1-.4-.2-.4-.5 0-.2.1-.4.3-.5.3-.2.6-.1.8.1.2.3.2.7 0 1-.3.5-.8.8-1.3.7-.6 0-1.1-.3-1.4-.7-.3-.4-.4-.9-.4-1.4l.1-.7c0-.3.1-.5 0-.7-.1-.8-.3-1.6-.8-2.3-.4-.5-.9-1-1.4-1.1-.3-.1-.5-.1-.6-.2-.1 0-.2-.1-.2-.2z" fill="#FF007A" />
-    <path d="M23.4 14.2c.1.3.1.5 0 .8-.2.8-.8 1.3-1.4 1.8l-.4.4c-.4.4-.6.9-.5 1.4.1.4.3.7.6.9l.2.1c.8.5 1 1.4.7 2.1-.2.4-.5.7-.9.9-.1 0-.1.1-.1.2.1.8-.1 1.6-.5 2.2-.6.9-1.5 1.4-2.5 1.6-1 .2-2 .1-2.9-.2-1.2-.4-2.2-1.2-2.9-2.3-.5-.7-.8-1.6-.9-2.4-.1-.4 0-.8.1-1.2.1-.3.3-.6.5-.8.3-.3.6-.4 1-.5.3 0 .5 0 .8.1.2.1.3.3.4.5s0 .4-.1.6c-.1.2-.3.3-.5.3s-.4 0-.5-.2c-.1-.1-.2-.2-.2-.1-.3.2-.4.6-.3 1 .1 1 .6 1.9 1.4 2.5.6.5 1.3.7 2.1.7.6 0 1.2-.2 1.6-.6.4-.3.7-.8.8-1.3v-.4c-.4.1-.8.1-1.2 0-.5-.2-.9-.6-1.1-1.1-.2-.6-.1-1.2.2-1.7.2-.3.5-.5.8-.6.3-.1.7-.1 1 0 .3.1.4.3.5.5 0-.6.2-1.1.5-1.6.4-.6 1-1.1 1.7-1.3.5-.2 1-.2 1.5-.1z" fill="#FF007A" />
-  </svg>
-);
-
-const walletIcons: Record<string, React.FC> = {
-  metamask: MetaMaskIcon,
-  coinbase: CoinbaseIcon,
-  walletconnect: WalletConnectIcon,
-  rainbow: RainbowIcon,
-  uniswap: UniswapIcon,
-};
-
-const wallets = [
-  { id: 'metamask', name: 'MetaMask', description: 'Browser extension & mobile', tag: 'Popular' },
-  { id: 'coinbase', name: 'Coinbase Wallet', description: 'Self-custody wallet by Coinbase' },
-  { id: 'walletconnect', name: 'WalletConnect', description: 'Scan QR from any mobile wallet' },
-  { id: 'rainbow', name: 'Rainbow', description: 'Mobile-first Ethereum wallet' },
-  { id: 'uniswap', name: 'Morphex Wallet', description: 'Built for DeFi traders' },
-];
 
 export const ConnectWalletModal: React.FC<ConnectWalletModalProps> = ({
   isOpen,
@@ -85,6 +79,13 @@ export const ConnectWalletModal: React.FC<ConnectWalletModalProps> = ({
   connectedWallet,
 }) => {
   const [connectingWallet, setConnectingWallet] = useState<string | null>(null);
+  const [hasInjectedWallet, setHasInjectedWallet] = useState<boolean>(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const [copiedAddr, setCopiedAddr] = useState(false);
+
+  useEffect(() => {
+    setHasInjectedWallet(typeof window !== 'undefined' && Boolean(window.ethereum));
+  }, []);
 
   if (!isOpen) return null;
 
@@ -94,12 +95,17 @@ export const ConnectWalletModal: React.FC<ConnectWalletModalProps> = ({
 
   const handleConnect = async (walletName: string) => {
     setConnectingWallet(walletName);
+    setConnectError(null);
     try {
+      if (!window.ethereum) {
+        throw new Error('No Ethereum wallet detected. Please install MetaMask to continue.');
+      }
       const { address } = await connectWallet();
       onConnectSuccess(address);
       onClose();
-    } catch {
-      onConnectSuccess('');
+    } catch (err) {
+      console.error('Wallet connect error:', err);
+      setConnectError(err instanceof Error ? err.message : 'Could not connect wallet.');
     } finally {
       setConnectingWallet(null);
     }
@@ -110,69 +116,138 @@ export const ConnectWalletModal: React.FC<ConnectWalletModalProps> = ({
     onClose();
   };
 
+  const handleCopy = () => {
+    if (!connectedWallet) return;
+    navigator.clipboard.writeText(connectedWallet);
+    setCopiedAddr(true);
+    setTimeout(() => setCopiedAddr(false), 2000);
+  };
+
+  const wallets = [
+    {
+      id: 'metamask',
+      name: 'MetaMask',
+      description: 'Browser extension & mobile app',
+      icon: MetaMaskIcon,
+      isDetected: hasInjectedWallet,
+    },
+    {
+      id: 'coinbase',
+      name: 'Coinbase Wallet',
+      description: 'Self-custody wallet by Coinbase',
+      icon: CoinbaseIcon,
+      isDetected: false,
+    },
+    {
+      id: 'injected',
+      name: 'Browser Injected (EIP-1193)',
+      description: 'Default browser provider (window.ethereum)',
+      icon: InjectedBrowserIcon,
+      isDetected: hasInjectedWallet,
+    },
+    {
+      id: 'walletconnect',
+      name: 'WalletConnect',
+      description: 'Scan QR from mobile wallet',
+      icon: WalletConnectIcon,
+      isDetected: false,
+    },
+  ];
+
   return (
     <div
       id="wallet-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-in fade-in"
       onClick={onClose}
-      style={{ animation: 'fadeIn 0.18s ease-out' }}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-md" />
 
       {/* Modal */}
       <div
         id="wallet-modal"
-        className="relative w-full max-w-[420px] overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-b from-[#0f1318] to-[#161b22] shadow-2xl"
+        className="relative w-full max-w-[440px] overflow-hidden rounded-3xl border border-white/80 bg-white/95 backdrop-blur-2xl shadow-2xl p-6"
         onClick={(e) => e.stopPropagation()}
-        style={{ animation: 'slideUp 0.25s cubic-bezier(.16,1,.3,1)' }}
       >
-        {/* Ambient glow */}
-        <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-80 h-40 rounded-full bg-[#00E5FF]/8 blur-3xl" />
-
         {/* Header */}
-        <div className="relative px-6 pt-6 pb-4 flex items-center justify-between">
+        <div className="flex items-center justify-between pb-4 border-b border-gray-100">
           <div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Connect Wallet</h2>
-            <p className="text-xs text-white/40 mt-0.5">Morphex · Sepolia Testnet</p>
+            <h2 className="text-xl font-extrabold text-[#192837] tracking-tight">Connect a Wallet</h2>
+            <p className="text-xs text-[#6B7280] mt-0.5">Sepolia Testnet · Zama FHEVM Enabled</p>
           </div>
           <button
             id="close-wallet-modal-btn"
             onClick={onClose}
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-all"
+            className="p-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-[#4B5563] transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Connected banner */}
+        {/* Connected state card */}
         {connectedWallet && (
-          <div className="mx-6 mb-3 flex items-center justify-between rounded-2xl bg-emerald-500/10 border border-emerald-500/20 px-4 py-3">
-            <div className="flex items-center gap-2.5">
+          <div className="mt-4 flex items-center justify-between rounded-2xl bg-[#ECFDF5] border border-[#A7F3D0] p-4">
+            <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <div className="w-2.5 h-2.5 rounded-full bg-[#10B981] animate-pulse" />
               </div>
               <div>
-                <span className="text-xs font-semibold text-emerald-300">Connected</span>
-                <p className="text-[11px] text-emerald-300/60 font-mono mt-0.5">{shortAddr}</p>
+                <span className="text-xs font-bold text-[#047857]">Connected Account</span>
+                <p className="text-xs font-mono font-bold text-[#192837] mt-0.5">{shortAddr}</p>
               </div>
             </div>
-            <button
-              onClick={handleDisconnect}
-              className="flex items-center gap-1.5 text-[11px] font-bold text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 px-3 py-1.5 rounded-lg transition-all"
-            >
-              <LogOut className="w-3 h-3" />
-              Disconnect
-            </button>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleCopy}
+                className="p-1.5 rounded-lg bg-white border border-[#A7F3D0] text-[#047857] hover:bg-emerald-50 text-xs font-semibold flex items-center gap-1"
+                title="Copy Address"
+              >
+                {copiedAddr ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+              <button
+                onClick={handleDisconnect}
+                className="flex items-center gap-1 text-xs font-bold text-[#DC2626] bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>Disconnect</span>
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Wallet list */}
-        <div className="px-6 pb-2 space-y-1.5">
+        {/* Missing Wallet Warning Banner */}
+        {!hasInjectedWallet && (
+          <div className="mt-4 p-3.5 rounded-2xl bg-[#FFF7ED] border border-[#FED7AA] text-xs text-[#9A3412] flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 text-[#EA580C] shrink-0 mt-0.5" />
+            <div>
+              <span className="font-bold block">No Web3 Wallet Detected</span>
+              <span>
+                To use Morphex, please install MetaMask or a compatible browser wallet.{' '}
+              </span>
+              <a
+                href="https://metamask.io/download/"
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold text-[#C2410C] underline inline-flex items-center gap-1 mt-1"
+              >
+                Download MetaMask <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
+        )}
+
+        {connectError && (
+          <div className="mt-4 p-3 rounded-2xl bg-[#FEF2F2] border border-[#FCA5A5] text-xs font-semibold text-[#B91C1C]">
+            {connectError}
+          </div>
+        )}
+
+        {/* Wallet Options List */}
+        <div className="mt-4 space-y-2">
           {wallets.map((w) => {
-            const Icon = walletIcons[w.id];
+            const Icon = w.icon;
             const isConnecting = connectingWallet === w.name;
-            const isConnected = connectedWallet !== null && connectingWallet === null;
 
             return (
               <button
@@ -180,32 +255,32 @@ export const ConnectWalletModal: React.FC<ConnectWalletModalProps> = ({
                 id={`wallet-option-${w.id}`}
                 onClick={() => void handleConnect(w.name)}
                 disabled={isConnecting}
-                className="group w-full flex items-center justify-between rounded-2xl border border-white/[0.06] bg-white/[0.03] hover:bg-white/[0.07] hover:border-white/[0.12] p-3.5 transition-all duration-200 text-left disabled:opacity-60"
+                className="group w-full flex items-center justify-between rounded-2xl border border-gray-200/80 bg-white hover:border-[#7342E2]/50 hover:bg-[#7342E2]/5 p-3.5 transition-all duration-200 text-left cursor-pointer shadow-xs disabled:opacity-60"
               >
                 <div className="flex items-center gap-3.5">
-                  <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-white/5 ring-1 ring-white/[0.06]">
+                  <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-gray-50 flex items-center justify-center border border-gray-100">
                     <Icon />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-[13px] text-white/90 group-hover:text-white transition-colors">
+                      <span className="font-bold text-sm text-[#192837] group-hover:text-[#7342E2] transition-colors">
                         {w.name}
                       </span>
-                      {w.tag && (
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-[#00E5FF] bg-[#00E5FF]/10 px-1.5 py-0.5 rounded-md">
-                          {w.tag}
+                      {w.isDetected && (
+                        <span className="text-[10px] font-bold text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-2 py-0.5 rounded-full">
+                          Detected
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-white/30 mt-0.5">{w.description}</p>
+                    <p className="text-xs text-[#6B7280] mt-0.5">{w.description}</p>
                   </div>
                 </div>
 
                 <div className="shrink-0 ml-2">
                   {isConnecting ? (
-                    <Loader2 className="w-4 h-4 text-[#00E5FF] animate-spin" />
+                    <Loader2 className="w-4 h-4 text-[#7342E2] animate-spin" />
                   ) : (
-                    <ArrowRight className="w-4 h-4 text-white/20 group-hover:text-white/50 group-hover:translate-x-0.5 transition-all duration-200" />
+                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-[#7342E2] group-hover:translate-x-0.5 transition-all duration-200" />
                   )}
                 </div>
               </button>
@@ -214,19 +289,11 @@ export const ConnectWalletModal: React.FC<ConnectWalletModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 pt-3 pb-5 flex items-center justify-center gap-1.5 border-t border-white/[0.06]">
-          <ShieldCheck className="w-3 h-3 text-white/20" />
-          <span className="text-[11px] text-white/25">
-            Secured by Morphex · Your keys, your crypto
-          </span>
+        <div className="mt-5 pt-4 border-t border-gray-100 flex items-center justify-center gap-1.5 text-xs text-[#6B7280]">
+          <ShieldCheck className="w-4 h-4 text-[#10B981]" />
+          <span>Strictly real Web3 · Zero simulated accounts</span>
         </div>
       </div>
-
-      {/* Keyframe animations */}
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-      `}</style>
     </div>
   );
 };

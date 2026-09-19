@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { QrCode, CheckCircle2, LoaderCircle, ShieldCheck, Smartphone, Copy, Check, ExternalLink, ArrowRight, Coins, History, Sparkles } from 'lucide-react';
-import { deployedTokens } from '../morphex';
+import {
+  QrCode,
+  CheckCircle2,
+  LoaderCircle,
+  ShieldCheck,
+  Smartphone,
+  Copy,
+  Check,
+  ExternalLink,
+  ArrowRight,
+  Coins,
+  History,
+  Sparkles,
+} from 'lucide-react';
 import { TokenIcon } from './TokenIcon';
 import {
   recordMintTransaction,
@@ -33,7 +45,6 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
   const [amount, setAmount] = useState('1000');
   const [tokenSymbol, setTokenSymbol] = useState('cUSDC');
   const [busy, setBusy] = useState(false);
-  const [scriptLoaded, setScriptLoaded] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState<{
     paymentId: string;
     txHash: string;
@@ -61,15 +72,10 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
 
   // Dynamically load Razorpay SDK script
   useEffect(() => {
-    if (window.Razorpay) {
-      setScriptLoaded(true);
-      return;
-    }
+    if (window.Razorpay) return;
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
-    script.onload = () => setScriptLoaded(true);
-    script.onerror = () => console.error('Failed to load Razorpay SDK script');
     document.body.appendChild(script);
   }, []);
 
@@ -80,11 +86,12 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
   const tokenRateInr = tokenPriceUsd * INR_PER_USD;
 
   const upiId = 'morphex.rzp@icici';
-  const qrCodeUrl = numAmount > 0
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
-        `upi://pay?pa=${upiId}&pn=MorphexProtocol&am=${numAmount}&cu=INR&tn=Mint_${formattedTokens}_${tokenSymbol}`,
-      )}`
-    : '';
+  const qrCodeUrl =
+    numAmount > 0
+      ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
+          `upi://pay?pa=${upiId}&pn=MorphexProtocol&am=${numAmount}&cu=INR&tn=Mint_${formattedTokens}_${tokenSymbol}`,
+        )}`
+      : '';
 
   const handleCopyVpa = () => {
     navigator.clipboard.writeText(upiId);
@@ -135,7 +142,7 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
       name: 'Morphex Protocol',
       description: `UPI On-Ramp: ₹${numAmount} INR → ${formattedTokens} ${tokenSymbol}`,
       image: 'https://morphex.io/favicon.ico',
-      handler: function (response: { razorpay_payment_id: string; razorpay_order_id?: string; razorpay_signature?: string }) {
+      handler: function (response: { razorpay_payment_id: string }) {
         setBusy(false);
         setShowQrModal(false);
         executeMint(response.razorpay_payment_id);
@@ -146,27 +153,8 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
         contact: '9999999999',
         method: 'upi',
       },
-      config: {
-        display: {
-          blocks: {
-            upi: {
-              name: 'Pay via UPI / QR Code',
-              instruments: [
-                {
-                  method: 'upi',
-                  flows: ['qr', 'intent'],
-                },
-              ],
-            },
-          },
-          sequence: ['block.upi'],
-          preferences: {
-            show_default_blocks: true,
-          },
-        },
-      },
       theme: {
-        color: '#00E5FF',
+        color: '#7342E2',
       },
       modal: {
         ondismiss: function () {
@@ -211,20 +199,22 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
+      <section className="rounded-3xl bg-white/90 backdrop-blur-2xl p-6 border border-white/80 shadow-[0_16px_48px_rgba(25,40,55,0.06)]">
         {/* Header */}
         <div className="mb-5 flex items-start justify-between gap-3 border-b border-[#F3F4F6] pb-4">
           <div>
-            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-[#E0F2FE] px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-[#0369A1]">
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-[#7342E2]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-[#7342E2] border border-[#7342E2]/20">
               <ShieldCheck className="h-3 w-3" />
               UPI On-Ramp & Instant Token Minting
             </div>
-            <h2 className="text-xl font-bold text-[#0D111C]">Fiat On-Ramp via UPI & QR</h2>
+            <h2 className="text-2xl font-extrabold text-[#192837] tracking-tight">
+              Fiat On-Ramp via UPI & QR
+            </h2>
             <p className="mt-1 text-xs text-[#6B7280]">
-              Pay INR via Google Pay, PhonePe, Paytm or scan QR to convert and mint tokens directly to your wallet.
+              Pay INR via Google Pay, PhonePe, Paytm, or BHIM to instantly mint confidential testnet assets.
             </p>
           </div>
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F0FDF4] text-[#16A34A] shadow-xs">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#7342E2]/10 text-[#7342E2] shadow-xs">
             <QrCode className="h-6 w-6" />
           </div>
         </div>
@@ -240,7 +230,7 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
                 onChange={(event) => setAmount(event.target.value)}
                 placeholder="1,000"
                 inputMode="decimal"
-                className="w-full rounded-2xl border border-[#E5E7EB] py-3.5 pl-8 pr-3 text-lg font-bold text-[#0D111C] focus:border-[#00E5FF] focus:outline-none focus:ring-2 focus:ring-[#00E5FF]/20"
+                className="w-full rounded-2xl border border-[#E5E7EB] py-3.5 pl-8 pr-3 text-lg font-bold text-[#192837] focus:border-[#7342E2] focus:outline-none focus:ring-2 focus:ring-[#7342E2]/20 font-numeric"
               />
             </div>
             <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[#6B7280]">
@@ -250,8 +240,10 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
                   key={preset}
                   type="button"
                   onClick={() => setAmount(preset)}
-                  className={`rounded-lg px-2 py-0.5 font-semibold transition-colors ${
-                    amount === preset ? 'bg-[#00E5FF] text-[#0D111C]' : 'bg-[#F3F4F6] text-[#4B5563] hover:bg-[#E5E7EB]'
+                  className={`rounded-lg px-2.5 py-1 font-bold transition-all cursor-pointer ${
+                    amount === preset
+                      ? 'bg-[#7342E2] text-white shadow-xs'
+                      : 'bg-gray-100 text-[#4B5563] hover:bg-gray-200'
                   }`}
                 >
                   ₹{preset}
@@ -261,13 +253,13 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-semibold text-[#6B7280]">Receive Minted Asset</label>
+            <label className="mb-1.5 block text-xs font-semibold text-[#6B7280]">Receive Shielded Asset</label>
             <div className="flex items-center gap-2 rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-3.5 py-3">
               <TokenIcon symbol={tokenSymbol} size="md" />
               <select
                 value={tokenSymbol}
                 onChange={(event) => setTokenSymbol(event.target.value)}
-                className="min-w-0 flex-1 bg-transparent text-sm font-bold text-[#0D111C] focus:outline-none cursor-pointer"
+                className="min-w-0 flex-1 bg-transparent text-sm font-bold text-[#192837] focus:outline-none cursor-pointer"
               >
                 {availableTokens.map((token) => (
                   <option key={token.symbol} value={token.symbol}>
@@ -276,31 +268,33 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
                 ))}
               </select>
             </div>
-            <div className="mt-2 text-[11px] text-[#6B7280]">
-              Rate: <span className="font-semibold text-[#0D111C]">1 {tokenSymbol} ≈ ₹{tokenRateInr.toFixed(2)} INR</span> (1 USD = ₹{INR_PER_USD})
+            <div className="mt-2 text-[11px] text-[#6B7280] font-numeric">
+              Rate: <span className="font-bold text-[#192837]">1 {tokenSymbol} ≈ ₹{tokenRateInr.toFixed(2)} INR</span> (1 USD = ₹{INR_PER_USD})
             </div>
           </div>
         </div>
 
         {/* Live Conversion Preview Card */}
-        <div className="mt-4 rounded-2xl border border-[#BAE6FD] bg-[#F0F9FF] p-4">
+        <div className="mt-4 rounded-2xl border border-[#7342E2]/20 bg-[#7342E2]/5 p-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
-              <div className="h-8 w-8 rounded-xl bg-[#0284C7]/10 flex items-center justify-center text-[#0284C7]">
-                <Coins className="h-4 w-4" />
+              <div className="h-9 w-9 rounded-xl bg-[#7342E2]/10 flex items-center justify-center text-[#7342E2]">
+                <Coins className="h-5 w-5" />
               </div>
               <div>
-                <span className="text-[11px] font-semibold text-[#0369A1] uppercase tracking-wide">Estimated Mint Output</span>
-                <div className="text-lg font-extrabold text-[#0D111C] font-mono">
+                <span className="text-[11px] font-bold text-[#7342E2] uppercase tracking-wide">
+                  Estimated Mint Output
+                </span>
+                <div className="text-xl font-extrabold text-[#192837] font-mono">
                   {formattedTokens} {tokenSymbol}
                 </div>
               </div>
             </div>
             <div className="sm:text-right">
-              <div className="text-xs font-semibold text-[#0369A1]">
+              <div className="text-xs font-bold text-[#7342E2] font-mono">
                 ≈ ${(calculatedTokens * tokenPriceUsd).toFixed(2)} USD
               </div>
-              <div className="text-[10px] text-[#64748B]">
+              <div className="text-[10px] text-[#6B7280]">
                 Direct on-chain minting to connected wallet
               </div>
             </div>
@@ -312,10 +306,10 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
           <button
             onClick={handleRazorpayPayment}
             disabled={busy || numAmount <= 0}
-            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#00E5FF] py-3.5 text-sm font-bold text-[#0D111C] shadow-sm hover:bg-[#00D0E6] active:scale-[0.99] transition-all disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-[#7342E2] hover:bg-[#6533D6] active:bg-[#5829B8] py-4 text-sm font-bold text-white shadow-sm hover:shadow-md active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
           >
             {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />}
-            Pay via Razorpay UPI & Mint
+            Pay via UPI & Mint
           </button>
 
           <button
@@ -325,16 +319,16 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
               setShowQrModal(true);
             }}
             disabled={busy || numAmount <= 0}
-            className="flex items-center justify-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white px-6 py-3.5 text-sm font-bold text-[#374151] shadow-sm hover:bg-[#F9FAFB] active:scale-[0.99] transition-all disabled:opacity-50"
+            className="flex items-center justify-center gap-2 rounded-2xl border border-[#E5E7EB] bg-white px-6 py-4 text-sm font-bold text-[#192837] shadow-xs hover:bg-gray-50 active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
           >
-            <QrCode className="h-4 w-4 text-[#00E5FF]" />
+            <QrCode className="h-4 w-4 text-[#7342E2]" />
             Scan UPI QR Code
           </button>
         </div>
 
         {/* Supported Payment Apps */}
         <div className="mt-5 flex flex-wrap items-center justify-center gap-3 border-t border-[#F3F4F6] pt-3.5 text-[11px] text-[#9CA3AF]">
-          <span>Supported Apps:</span>
+          <span>Supported:</span>
           <span className="font-semibold text-[#4B5563]">Google Pay</span>
           <span>•</span>
           <span className="font-semibold text-[#4B5563]">PhonePe</span>
@@ -343,7 +337,7 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
           <span>•</span>
           <span className="font-semibold text-[#4B5563]">BHIM UPI</span>
           <span>•</span>
-          <span className="font-semibold text-[#4B5563]">Any Bank UPI App</span>
+          <span className="font-semibold text-[#4B5563]">All Bank UPI Apps</span>
         </div>
 
         {/* Success Notification & Mint Receipt */}
@@ -361,14 +355,14 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
 
             <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl bg-white/80 p-3.5 border border-[#A7F3D0]/60">
               <div>
-                <span className="text-[10px] uppercase font-bold text-[#6B7280]">Tokens Minted & Credited</span>
+                <span className="text-[10px] uppercase font-bold text-[#6B7280]">Tokens Minted</span>
                 <p className="text-base font-extrabold text-[#047857] font-mono">
                   +{paymentSuccess.tokenAmount} {paymentSuccess.token}
                 </p>
               </div>
               <div>
                 <span className="text-[10px] uppercase font-bold text-[#6B7280]">Amount Paid</span>
-                <p className="text-base font-extrabold text-[#0D111C] font-mono">
+                <p className="text-base font-extrabold text-[#192837] font-mono">
                   ₹{paymentSuccess.amountInr} INR
                 </p>
               </div>
@@ -380,16 +374,12 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
                   </p>
                   <button
                     onClick={() => handleCopyTx(paymentSuccess.txHash)}
-                    className="flex items-center gap-1 rounded bg-[#F3F4F6] px-2 py-0.5 text-[10px] font-semibold text-[#4B5563] hover:bg-[#E5E7EB]"
+                    className="flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-[#4B5563] hover:bg-gray-200 cursor-pointer"
                   >
                     {copiedTx ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
                     {copiedTx ? 'Copied' : 'Copy'}
                   </button>
                 </div>
-              </div>
-              <div className="sm:col-span-2 flex items-center justify-between text-[11px] text-[#047857] border-t border-[#D1FAE5] pt-2">
-                <span>Ref ID: <span className="font-mono font-semibold">{paymentSuccess.paymentId}</span></span>
-                <span>Recipient: <span className="font-mono font-semibold">{paymentSuccess.wallet.slice(0, 6)}...{paymentSuccess.wallet.slice(-4)}</span></span>
               </div>
             </div>
 
@@ -400,7 +390,7 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
               {onViewPortfolio && (
                 <button
                   onClick={onViewPortfolio}
-                  className="flex items-center gap-1 rounded-xl bg-[#047857] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#065F46] transition-colors"
+                  className="flex items-center gap-1 rounded-xl bg-[#047857] px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-[#065F46] transition-colors cursor-pointer"
                 >
                   View in Portfolio
                   <ArrowRight className="h-3.5 w-3.5" />
@@ -413,32 +403,32 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
         {/* UPI QR Code Modal */}
         {showQrModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
-            <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl border border-[#E5E7EB]">
+            <div className="w-full max-w-sm rounded-3xl bg-white/95 backdrop-blur-2xl p-6 shadow-2xl border border-white/70">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-[#0D111C]">Scan & Pay via UPI</h3>
-                  <p className="text-xs text-[#6B7280]">Scan with Google Pay, PhonePe, or Paytm</p>
+                  <h3 className="text-lg font-bold text-[#192837]">Scan & Pay via UPI</h3>
+                  <p className="text-xs text-[#6B7280]">Scan with any UPI app to settle in INR</p>
                 </div>
                 <button
                   onClick={() => setShowQrModal(false)}
-                  className="rounded-xl p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                  className="rounded-xl p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
 
               {/* QR Code Container */}
-              <div className="my-3 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#00E5FF]/50 bg-[#F0FDFF] p-4 text-center">
+              <div className="my-3 flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#7342E2]/40 bg-[#7342E2]/5 p-4 text-center">
                 <img
                   src={qrCodeUrl}
-                  alt="Razorpay UPI QR Code"
-                  className="h-48 w-48 rounded-xl shadow-md border border-[#E0F2FE]"
+                  alt="UPI QR Code"
+                  className="h-48 w-48 rounded-xl shadow-md border border-white"
                 />
                 <div className="mt-3">
-                  <div className="text-sm font-extrabold text-[#0D111C] font-mono">
+                  <div className="text-sm font-extrabold text-[#192837] font-mono">
                     ₹{numAmount.toLocaleString()} INR
                   </div>
-                  <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-[#E0F2FE] px-2.5 py-0.5 text-xs font-bold text-[#0284C7]">
+                  <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-[#7342E2]/10 px-2.5 py-0.5 text-xs font-bold text-[#7342E2]">
                     <Sparkles className="h-3 w-3" />
                     Mints {formattedTokens} {tokenSymbol}
                   </div>
@@ -446,28 +436,18 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
               </div>
 
               {/* VPA / Merchant Details */}
-              <div className="mb-3 flex items-center justify-between rounded-xl bg-[#F9FAFB] p-2.5 text-xs border border-[#F3F4F6]">
+              <div className="mb-3 flex items-center justify-between rounded-xl bg-gray-50 p-2.5 text-xs border border-gray-100">
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold text-[#9CA3AF]">Merchant UPI VPA</p>
                   <p className="truncate font-mono font-bold text-[#374151]">{upiId}</p>
                 </div>
                 <button
                   onClick={handleCopyVpa}
-                  className="flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-[#0D111C] shadow-xs border border-[#E5E7EB] hover:bg-[#F3F4F6]"
+                  className="flex items-center gap-1 rounded-lg bg-white px-2.5 py-1 text-[11px] font-semibold text-[#192837] shadow-xs border border-[#E5E7EB] hover:bg-gray-50 cursor-pointer"
                 >
                   {copiedVpa ? <Check className="h-3.5 w-3.5 text-[#10B981]" /> : <Copy className="h-3.5 w-3.5" />}
                   {copiedVpa ? 'Copied' : 'Copy'}
                 </button>
-              </div>
-
-              {/* Connected Wallet Destination */}
-              <div className="mb-4 rounded-xl bg-[#F8FAFC] p-2.5 text-xs border border-[#E2E8F0]">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-[#64748B]">Destination Wallet:</span>
-                  <span className="font-mono font-bold text-[#0D111C]">
-                    {connectedWallet ? `${connectedWallet.slice(0, 6)}...${connectedWallet.slice(-4)}` : 'Wallet not connected'}
-                  </span>
-                </div>
               </div>
 
               {/* Actions inside Modal */}
@@ -475,18 +455,10 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
                 <button
                   onClick={handleSimulateQrPayment}
                   disabled={busy}
-                  className="flex items-center justify-center gap-2 rounded-2xl bg-[#00E5FF] py-3.5 text-sm font-bold text-[#0D111C] shadow-sm hover:bg-[#00D0E6] active:scale-[0.99] transition-all"
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-[#7342E2] hover:bg-[#6533D6] py-3.5 text-sm font-bold text-white shadow-sm active:scale-[0.99] transition-all cursor-pointer"
                 >
                   {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                  Confirm UPI Payment & Mint Tokens
-                </button>
-
-                <button
-                  onClick={handleRazorpayPayment}
-                  className="flex items-center justify-center gap-1.5 text-xs font-semibold text-[#00A3B8] hover:underline py-1"
-                >
-                  Or open Razorpay standard checkout
-                  <ExternalLink className="h-3 w-3" />
+                  Confirm UPI Payment & Mint
                 </button>
               </div>
             </div>
@@ -495,11 +467,11 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
       </section>
 
       {/* Recent UPI Mint Transactions Ledger */}
-      <section className="rounded-3xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
+      <section className="rounded-3xl bg-white/90 backdrop-blur-2xl p-6 border border-white/80 shadow-[0_16px_48px_rgba(25,40,55,0.06)]">
         <div className="flex items-center justify-between border-b border-[#F3F4F6] pb-3 mb-4">
           <div className="flex items-center gap-2">
-            <History className="h-4 w-4 text-[#00E5FF]" />
-            <h3 className="text-sm font-bold text-[#0D111C]">Recent UPI Mint Transactions</h3>
+            <History className="h-4 w-4 text-[#7342E2]" />
+            <h3 className="text-sm font-bold text-[#192837]">Recent UPI Mint Transactions</h3>
           </div>
           <span className="text-[11px] font-semibold text-[#6B7280]">
             {recentTxs.length} Transactions
@@ -513,7 +485,7 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-[#F9FAFB] border-b border-[#E5E7EB] text-[#6B7280] uppercase tracking-wider font-semibold">
+              <thead className="bg-[#F9FAFB]/90 border-b border-[#E5E7EB] text-[#6B7280] uppercase tracking-wider font-semibold">
                 <tr>
                   <th className="py-2.5 px-3">Date / Time</th>
                   <th className="py-2.5 px-3">Paid (INR)</th>
@@ -524,17 +496,24 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
               </thead>
               <tbody className="divide-y divide-[#F3F4F6]">
                 {recentTxs.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-[#F9FAFB] transition-colors">
+                  <tr key={tx.id} className="hover:bg-[#F9FAFB]/80 transition-colors">
                     <td className="py-3 px-3 text-[#6B7280] whitespace-nowrap">
-                      {new Date(tx.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric' })}
+                      {new Date(tx.timestamp).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
                     </td>
-                    <td className="py-3 px-3 font-bold text-[#0D111C] font-mono">
+                    <td className="py-3 px-3 font-bold text-[#192837] font-mono">
                       ₹{tx.amountInr.toLocaleString()}
                     </td>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-1.5">
                         <TokenIcon symbol={tx.tokenSymbol} size="sm" />
-                        <span className="font-bold text-[#047857] font-mono">+{tx.tokenAmount.toFixed(4)} {tx.tokenSymbol}</span>
+                        <span className="font-bold text-[#047857] font-mono">
+                          +{tx.tokenAmount.toFixed(4)} {tx.tokenSymbol}
+                        </span>
                       </div>
                     </td>
                     <td className="py-3 px-3 font-mono text-[#6B7280]">
@@ -558,4 +537,3 @@ export const OnRampView: React.FC<OnRampViewProps> = ({
     </div>
   );
 };
-

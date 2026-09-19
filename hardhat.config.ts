@@ -21,7 +21,7 @@ const SEPOLIA_RPC_URL =
     ? `https://eth-sepolia.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`
     : process.env.INFURA_API_KEY
       ? `https://sepolia.infura.io/v3/${process.env.INFURA_API_KEY}`
-      : "https://ethereum-sepolia-rpc.publicnode.com");
+      : "https://ethereum-sepolia.publicnode.com");
 
 function getSepoliaAccounts(): { mnemonic: string; count: number } | string[] {
   const privateKey = process.env.PRIVATE_KEY || getHardhatVar("PRIVATE_KEY");

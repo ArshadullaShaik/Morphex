@@ -83,10 +83,6 @@ async function main() {
           continue;
         }
 
-        // Mark as processed BEFORE submitting to prevent double-minting on concurrent polls
-        processed[txHash] = true;
-        await saveProcessed(processed);
-
         const amountFormatted = ethers.formatUnits(amount, 6);
         console.log(`\n>>> New Deposit Detected! <<<`);
         console.log(`  Tx:     https://sepolia.etherscan.io/tx/${txHash}`);
@@ -95,6 +91,12 @@ async function main() {
 
         try {
           const cTokenContract = await ethers.getContractAt("MorphexToken", mapping.confidentialAddress, relayer);
+
+          const isRelayer = await cTokenContract.hasRole(await cTokenContract.RELAYER_ROLE(), relayer.address);
+          if (!isRelayer) {
+            console.error(`  [SKIP] Signer ${relayer.address} lacks RELAYER_ROLE on ${mapping.confidentialSymbol}!`);
+            continue;
+          }
 
           console.log(`  Generating FHE encryption for ${user}...`);
           const input = fhevm.createEncryptedInput(mapping.confidentialAddress, user);
@@ -106,11 +108,13 @@ async function main() {
           console.log(`  Submitted relayerMint tx: ${tx.hash}`);
           await tx.wait();
 
+          processed[txHash] = true;
+          await saveProcessed(processed);
+
           console.log(`  [SUCCESS] Minted ${amountFormatted} ${mapping.confidentialSymbol} to ${user}!`);
           console.log(`  Mint Tx: https://sepolia.etherscan.io/tx/${tx.hash}\n`);
         } catch (mintErr: any) {
           console.error(`  [ERROR minting for deposit ${txHash}]:`, mintErr.message || mintErr);
-          // Keep it marked as processed to avoid double-minting on retry
         }
       }
 

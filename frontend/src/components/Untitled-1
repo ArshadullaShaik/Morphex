@@ -1,0 +1,6 @@
+cd /Users/valoucard/projects/Morphex/Morphex
+PRIVATE_KEY="0x3b609d64c406760355ebf32515631c398784dba8e023ee11aa98100a85712d22" npm run relayer:daemon
+
+
+cd /Users/valoucard/projects/Morphex/Morphex
+PRIVATE_KEY="0x3b609d64c406760355ebf32515631c398784dba8e023ee11aa98100a85712d22" npm run mint:confidential

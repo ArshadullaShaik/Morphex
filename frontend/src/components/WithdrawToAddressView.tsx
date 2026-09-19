@@ -45,24 +45,42 @@ const QrScannerOverlay: React.FC<{
 }> = ({ onScan, onClose }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const scannerRef = useRef<any>(null);
+  const isStartingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [facing, setFacing] = useState<'environment' | 'user'>('environment');
   const [switching, setSwitching] = useState(false);
 
+  const stopScanner = async () => {
+    if (scannerRef.current) {
+      const scanner = scannerRef.current;
+      scannerRef.current = null;
+      try {
+        if (scanner.isScanning) {
+          await scanner.stop();
+        }
+        await scanner.clear();
+      } catch {
+        /* already stopped / cleared */
+      }
+    }
+    if (containerRef.current) {
+      containerRef.current.innerHTML = '';
+    }
+  };
+
   const startCamera = useCallback(
     async (facingMode: 'environment' | 'user') => {
+      if (isStartingRef.current) return;
+      isStartingRef.current = true;
       try {
+        await stopScanner();
+        if (!containerRef.current) return;
+
         const { Html5Qrcode } = await import('html5-qrcode');
         if (!containerRef.current) return;
 
-        // Stop any existing scanner first
-        if (scannerRef.current) {
-          try {
-            await scannerRef.current.stop();
-          } catch {
-            /* already stopped */
-          }
-        }
+        // Ensure container is empty before attaching
+        containerRef.current.innerHTML = '';
 
         const scanner = new Html5Qrcode(containerRef.current.id);
         scannerRef.current = scanner;
@@ -77,7 +95,7 @@ const QrScannerOverlay: React.FC<{
           (decodedText: string) => {
             const address = parseQrAddress(decodedText);
             if (address) {
-              scanner.stop().catch(() => {});
+              void stopScanner();
               onScan(address);
             }
           },
@@ -94,19 +112,26 @@ const QrScannerOverlay: React.FC<{
               : err.message
             : 'Could not start camera.',
         );
+      } finally {
+        isStartingRef.current = false;
       }
     },
     [onScan],
   );
 
   useEffect(() => {
-    let mounted = true;
-    if (mounted) void startCamera(facing);
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (!cancelled) {
+        void startCamera(facing);
+      }
+    }, 50);
+
     return () => {
-      mounted = false;
-      scannerRef.current?.stop?.().catch(() => {});
+      cancelled = true;
+      clearTimeout(timer);
+      void stopScanner();
     };
-    // Only run on mount/unmount — camera switches are handled by flipCamera
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -152,7 +177,7 @@ const QrScannerOverlay: React.FC<{
           <div
             id="morphex-qr-reader"
             ref={containerRef}
-            className="w-full min-h-[320px]"
+            className="w-full min-h-[320px] max-h-[360px] overflow-hidden [&_video]:w-full [&_video]:h-full [&_video]:object-cover"
           />
           {/* Scanning animation overlay */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

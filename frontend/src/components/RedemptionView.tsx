@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { Contract, parseUnits } from 'ethers';
-import { ArrowUpRight, LoaderCircle, RefreshCw, Send, Wallet } from 'lucide-react';
-import { claimEscapedWithdrawal, connectWallet, deployedTokens, fetchWithdrawalRequest, submitConfidentialRedemption } from '../morphex';
+import { ArrowUpRight, LoaderCircle, RefreshCw, Send, Wallet, Lock, ShieldCheck } from 'lucide-react';
+import {
+  claimEscapedWithdrawal,
+  connectWallet,
+  deployedTokens,
+  fetchWithdrawalRequest,
+  submitConfidentialRedemption,
+} from '../morphex';
 import { TokenIcon } from './TokenIcon';
 import { WithdrawToAddressView } from './WithdrawToAddressView';
 
@@ -35,7 +41,9 @@ export const RedemptionView: React.FC<{ connectedWallet: string | null; onOpenWa
       setRequestId(result.requestId);
       setRequest(await fetchWithdrawalRequest(result.requestId));
       setAmount('');
-      setMessage(`Redemption request #${result.requestId.toString()} submitted. The relayer will release the matching ${selectedToken.symbol.replace(/^c/, '')} to this wallet.`);
+      setMessage(
+        `Redemption request #${result.requestId.toString()} submitted. The relayer will release the matching ${selectedToken.symbol.replace(/^c/, '')} to this wallet.`,
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Redemption failed.');
     } finally {
@@ -71,15 +79,15 @@ export const RedemptionView: React.FC<{ connectedWallet: string | null; onOpenWa
   };
 
   return (
-    <div>
+    <div className="space-y-4">
       {/* Mode toggle */}
-      <div className="flex rounded-xl bg-[#F3F4F6] p-1 gap-1">
+      <div className="flex rounded-2xl bg-white/80 p-1 border border-[#E5E7EB] shadow-xs">
         <button
           onClick={() => setMode('self')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all ${
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
             mode === 'self'
-              ? 'bg-white text-[#0D111C] shadow-sm'
-              : 'text-[#6B7280] hover:text-[#0D111C]'
+              ? 'bg-[#7342E2] text-white shadow-xs'
+              : 'text-[#6B7280] hover:text-[#192837]'
           }`}
         >
           <Wallet className="h-3.5 w-3.5" />
@@ -87,10 +95,10 @@ export const RedemptionView: React.FC<{ connectedWallet: string | null; onOpenWa
         </button>
         <button
           onClick={() => setMode('send')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-lg transition-all ${
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
             mode === 'send'
-              ? 'bg-white text-[#0D111C] shadow-sm'
-              : 'text-[#6B7280] hover:text-[#0D111C]'
+              ? 'bg-[#7342E2] text-white shadow-xs'
+              : 'text-[#6B7280] hover:text-[#192837]'
           }`}
         >
           <Send className="h-3.5 w-3.5" />
@@ -103,45 +111,105 @@ export const RedemptionView: React.FC<{ connectedWallet: string | null; onOpenWa
         <WithdrawToAddressView connectedWallet={connectedWallet} onOpenWallet={onOpenWallet} />
       )}
 
-      {/* Redeem to self (existing flow) */}
+      {/* Redeem to self */}
       {mode === 'self' && (
-        <section className="mt-4 rounded-2xl border border-[#E5E7EB] bg-white p-4">
-          <div className="mb-4 flex items-start justify-between gap-3">
+        <section className="rounded-3xl bg-white/90 backdrop-blur-2xl p-5 border border-white/80 shadow-[0_16px_48px_rgba(25,40,55,0.06)]">
+          <div className="mb-4 flex items-start justify-between gap-3 border-b border-[#F3F4F6] pb-3">
             <div>
-              <h2 className="text-base font-bold text-[#0D111C]">Redeem confidential crypto</h2>
-              <p className="mt-1 text-xs text-[#6B7280]">Burn cUSDC or cUSDT and receive the corresponding real ERC-20 in this wallet.</p>
+              <h2 className="text-base font-bold text-[#192837]">Redeem Confidential Crypto</h2>
+              <p className="mt-0.5 text-xs text-[#6B7280]">
+                Burn shielded tokens and unwrap the corresponding public ERC-20 to this wallet.
+              </p>
             </div>
-            <ArrowUpRight className="h-5 w-5 text-[#6B7280]" />
+            <div className="w-8 h-8 rounded-xl bg-[#7342E2]/10 flex items-center justify-center text-[#7342E2]">
+              <Lock className="h-4 w-4" />
+            </div>
           </div>
+
           {deployedTokens.length === 0 ? (
-            <p className="rounded-xl bg-[#F9FAFB] p-3 text-xs font-semibold text-[#6B7280]">No confidential tokens are configured.</p>
+            <p className="rounded-2xl bg-[#F9FAFB] p-4 text-xs font-semibold text-[#6B7280]">
+              No confidential tokens are currently configured.
+            </p>
           ) : (
             <>
               <div className="flex items-center gap-3">
                 <TokenIcon symbol={selectedToken?.symbol || 'cUSDC'} size="lg" />
                 <select
                   value={selectedToken?.symbol || ''}
-                  onChange={(event) => setSelectedToken(deployedTokens.find((token) => token.symbol === event.target.value) || deployedTokens[0])}
-                  className="min-w-0 flex-1 rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] px-3 py-3 text-sm font-semibold"
+                  onChange={(event) =>
+                    setSelectedToken(
+                      deployedTokens.find((token) => token.symbol === event.target.value) || deployedTokens[0],
+                    )
+                  }
+                  className="min-w-0 flex-1 rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] px-3.5 py-3 text-sm font-bold text-[#192837] focus:outline-none focus:border-[#7342E2] cursor-pointer"
                 >
-                  {deployedTokens.map((token) => <option key={token.symbol} value={token.symbol}>{token.symbol}</option>)}
+                  {deployedTokens.map((token) => (
+                    <option key={token.symbol} value={token.symbol}>
+                      {token.symbol} — {token.name}
+                    </option>
+                  ))}
                 </select>
               </div>
-              <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" inputMode="decimal" className="mt-3 w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-xl font-semibold focus:outline-none" />
-              <button onClick={() => void redeem()} disabled={busy || !amount} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#0D111C] py-3 text-sm font-bold text-white disabled:opacity-60">
+
+              <input
+                value={amount}
+                onChange={(event) => setAmount(event.target.value)}
+                placeholder="0.00"
+                inputMode="decimal"
+                className="mt-3.5 w-full rounded-2xl border border-[#E5E7EB] px-4 py-3.5 text-2xl font-extrabold text-[#192837] focus:outline-none focus:border-[#7342E2] font-numeric"
+              />
+
+              <button
+                onClick={() => void redeem()}
+                disabled={busy || !amount}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#7342E2] hover:bg-[#6533D6] py-4 text-sm font-bold text-white shadow-sm hover:shadow-md transition-all disabled:opacity-60 cursor-pointer"
+              >
                 {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
-                Burn and redeem to wallet
+                Burn and Redeem to Wallet
               </button>
             </>
           )}
+
           {requestId !== null && request && (
-            <div className="mt-4 rounded-xl border border-[#E5E7EB] bg-[#F9FAFB] p-3 text-xs text-[#374151]">
-              <div className="flex items-center justify-between font-semibold"><span>Request #{requestId.toString()}</span><button onClick={() => void refresh()} disabled={busy} aria-label="Refresh redemption status"><RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} /></button></div>
-              <div className="mt-2">Status: {request.fulfilled ? (request.escaped ? 'Claimed by escape hatch' : 'Paid by relayer') : 'Awaiting relayer payout'}</div>
-              {!request.fulfilled && <button onClick={() => void claim()} disabled={busy} className="mt-3 w-full rounded-lg border border-[#D1D5DB] px-3 py-2 font-semibold disabled:opacity-60">Claim after escape delay</button>}
+            <div className="mt-4 rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] p-4 text-xs text-[#374151]">
+              <div className="flex items-center justify-between font-bold text-[#192837]">
+                <span>Request #{requestId.toString()}</span>
+                <button
+                  onClick={() => void refresh()}
+                  disabled={busy}
+                  aria-label="Refresh redemption status"
+                  className="p-1 rounded-lg hover:bg-gray-200 cursor-pointer"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${busy ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              <div className="mt-2 text-xs">
+                Status:{' '}
+                <span className="font-semibold text-[#7342E2]">
+                  {request.fulfilled
+                    ? request.escaped
+                      ? 'Claimed via Escape Hatch'
+                      : 'Settled by Relayer'
+                    : 'Awaiting Relayer Confirmation'}
+                </span>
+              </div>
+              {!request.fulfilled && (
+                <button
+                  onClick={() => void claim()}
+                  disabled={busy}
+                  className="mt-3 w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-[#192837] hover:bg-gray-50 disabled:opacity-60 cursor-pointer"
+                >
+                  Claim via Escape Delay
+                </button>
+              )}
             </div>
           )}
-          {message && <p className="mt-3 rounded-xl bg-[#F9FAFB] p-3 text-xs font-semibold text-[#374151]">{message}</p>}
+
+          {message && (
+            <p className="mt-3.5 rounded-2xl bg-[#ECFDF5] border border-[#A7F3D0] p-3.5 text-xs font-semibold text-[#047857]">
+              {message}
+            </p>
+          )}
         </section>
       )}
     </div>
