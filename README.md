@@ -4,7 +4,6 @@ Confidential constant-product AMM built with [Zama fhEVM](https://docs.zama.ai/f
 
 Every protocol amount is encrypted end-to-end: token balances, total supply, mint quantities, swap input/output, pool reserves, LP shares, liquidity deposits/withdrawals, and execution receipts. **No amount is ever decrypted on-chain.**
 
-> **Status** — Tested locally in fhEVM mock mode. Not deployed to any public network. Not audited.
 
 ## What's built
 
