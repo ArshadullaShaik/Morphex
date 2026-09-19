@@ -17,13 +17,6 @@ Every protocol amount is encrypted end-to-end: token balances, total supply, min
 
 **5 contracts · 680 lines of Solidity · 3 test suites · 21 tests passing**
 
-### What's not built yet
-
-- Lending / borrowing (no contracts exist for this)
-- Mainnet or testnet deployment
-- Independent security audit
-- Production quote service
-
 ## Test results
 
 All 21 tests pass in fhEVM mock mode (`npm test`):
