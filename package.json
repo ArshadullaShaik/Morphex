@@ -1,7 +1,7 @@
 {
   "name": "morphex",
   "version": "0.1.0",
-  "description": "Morphex — FHE-based DeFi protocol with confidential tokens, swaps, and lending",
+  "description": "Confidential constant-product AMM built with Zama fhEVM and ERC-7984",
   "private": true,
   "scripts": {
     "compile": "hardhat compile",

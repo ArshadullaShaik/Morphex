@@ -21,6 +21,16 @@ dist/
 .vscode/
 .idea/
 
+# fhEVM plugin (regenerated on compile)
+fhevmTemp/
+
+# Runtime / deploy artifacts
+sepolia-deploy.log
+.relayer-processed.json
+
+# Media
+video/
+
 # OS
 .DS_Store
 Thumbs.db

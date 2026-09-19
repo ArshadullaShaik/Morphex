@@ -1,30 +1,77 @@
 # Morphex
 
-Morphex is a confidential constant-product exchange built with Zama fhEVM and OpenZeppelin ERC-7984.
+Confidential constant-product AMM built with [Zama fhEVM](https://docs.zama.ai/fhevm) and [OpenZeppelin ERC-7984](https://github.com/OpenZeppelin/openzeppelin-contracts/tree/master/contracts/token/ERC7984).
 
-Every protocol amount is encrypted: token balances and supply, mint quantities, swap input/output, pool reserves, LP balances, liquidity deposits/withdrawals, and execution receipts. The protocol never decrypts an amount on-chain.
+Every protocol amount is encrypted end-to-end: token balances, total supply, mint quantities, swap input/output, pool reserves, LP shares, liquidity deposits/withdrawals, and execution receipts. **No amount is ever decrypted on-chain.**
+
+> **Status** — Tested locally in fhEVM mock mode. Not deployed to any public network. Not audited.
+
+## What's built
+
+| Contract | Purpose | Lines |
+|---|---|---:|
+| `MorphexToken` | ERC-7984 confidential token with relayer mint/burn bridge | 127 |
+| `ConfidentialPair` | Encrypted constant-product AMM — reserves, LP accounting, swap validation, refund receipts | 292 |
+| `ConfidentialPairFactory` | Canonical pair creation (one pair per token combination) | 30 |
+| `RelayerVault` | Public ERC-20 custody with withdrawal requests, batch payouts, and time-locked escape hatch | 210 |
+| `MockERC20` | Test token for local development | 21 |
+
+**5 contracts · 680 lines of Solidity · 3 test suites · 21 tests passing**
+
+### What's not built yet
+
+- Lending / borrowing (no contracts exist for this)
+- Mainnet or testnet deployment
+- Independent security audit
+- Production quote service
+
+## Test results
+
+All 21 tests pass in fhEVM mock mode (`npm test`):
+
+```
+MorphexToken (MORPH)
+  Deployment ..................................... 3 passing
+  Mint ........................................... 4 passing
+  confidentialTransfer ........................... 2 passing
+  Operator + confidentialTransferFrom ............ 2 passing
+  Sequential operations .......................... 1 passing
+
+ConfidentialPair
+  Initial liquidity, swap, LP mint/burn, refund .. 4 passing
+
+RelayerVault + confidential bridge
+  Deposit→mint→burn→payout, escape hatch,
+  double-spend prevention, access control ........ 5 passing
+
+21 passing
+```
 
 ## Privacy boundary
 
-FHE encrypts values, not Ethereum itself. These remain public: wallet and contract addresses, pair identity, transaction timing/order, gas use, and the fact that a liquidity or swap function was called. Events deliberately contain no amounts.
+FHE encrypts values, not Ethereum itself. These remain **public**: wallet and contract addresses, pair identity, transaction timing/order, gas usage, and the fact that a liquidity or swap function was called. Events deliberately contain no amounts.
 
 ## Architecture
 
 ```
-wallet (encrypts amount + target) -> ERC-7984 token -> ConfidentialPair
-                                                    -> FHE invariant checks
-                                                    -> encrypted receipt for wallet
+wallet (encrypts amount + target) → ERC-7984 token → ConfidentialPair
+                                                    → FHE invariant checks
+                                                    → encrypted receipt for wallet
 ```
 
-- `MorphexToken`: ERC-7984 confidential asset. `mint` takes an encrypted amount and proof.
-- `ConfidentialPairFactory`: creates one canonical pair per two-token combination.
-- `ConfidentialPair`: encrypted reserves and LP accounting; validates fee-adjusted `x*y=k` and proportional LP equations with FHE.
+**Relayer bridge** (for wrapping public ERC-20 ↔ confidential tokens):
 
-## Important AMM design detail
+```
+Public ERC-20 → RelayerVault deposit → relayerMint → cToken (encrypted)
+cToken → relayerBurnRequest → RelayerVault → batchWithdraw → public ERC-20
+                             └→ escape hatch after delay (trustless fallback)
+```
 
-The installed fhEVM release supports encrypted multiplication/comparisons but not encrypted÷encrypted division or square root at usable circuit depth. Morphex therefore accepts an encrypted output target for swaps and an encrypted LP-share target for liquidity. The pair validates those values against the encrypted invariant; a stale or excessive target produces a confidential no-op/refund.
+## AMM design detail
 
-This keeps every value private and avoids trusting an on-chain oracle. The frontend can calculate targets for its own known liquidity, or obtain them from an optional quote service authorized to view a pool. A quote service is never able to bypass the pair's FHE checks.
+The installed fhEVM release supports encrypted multiplication and comparisons but not encrypted÷encrypted division or square root at usable circuit depth. Morphex therefore accepts an **encrypted output target** for swaps and an **encrypted LP-share target** for liquidity. The pair validates those values against the encrypted invariant; a stale or excessive target produces a confidential no-op with refund.
+
+This keeps every value private and avoids trusting an on-chain oracle. The frontend can calculate targets for its own known liquidity, or obtain them from an optional quote service authorized to view a pool. A quote service can never bypass the pair's FHE checks.
 
 ## User flow
 
@@ -32,7 +79,7 @@ This keeps every value private and avoids trusting an on-chain oracle. The front
 2. Call `setOperator(pair, expiry)` on each ERC-7984 token the pair may pull.
 3. Add liquidity with encrypted `amount0`, `amount1`, and `shareTarget`.
 4. Swap with encrypted `amountIn` and `amountOutTarget`.
-5. Read `lastSwapOf`/`lastLiquidityOf`, then decrypt only the caller-authorized receipt locally.
+5. Read `lastSwapOf` / `lastLiquidityOf`, then decrypt only the caller-authorized receipt locally.
 
 Invalid private checks do not expose a revert reason: the pair refunds the encrypted input and stores an encrypted `success = false` receipt.
 
@@ -41,15 +88,11 @@ Invalid private checks do not expose a revert reason: the pair refunds the encry
 ```bash
 npm install
 npm run compile
-npm test
+npm test           # 21 tests, fhEVM mock mode
 npm run typecheck
 ```
 
-The suite uses fhEVM mock mode for contract tests. It covers encrypted minting/transfers, private initial liquidity, successful swaps, and private failed-swap refunds.
-
-## Deploy
-
-### Local Development
+### Local demo with frontend
 
 ```bash
 npx hardhat node
@@ -57,98 +100,24 @@ npm run deploy:relayer-local
 cd frontend && npm run dev
 ```
 
-### Sepolia Testnet Deployment
-
-1. **Configure credentials**: Copy `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-   Set your deployer wallet `PRIVATE_KEY` (must have Sepolia ETH for gas). You can also set a custom `SEPOLIA_RPC_URL` if desired.
-
-2. **Run pre-flight verification**:
-   ```bash
-   npm run verify:sepolia
-   ```
-   This checks RPC latency, Sepolia block height, deployer balance, and confirms Zama's FHEVM Coprocessor and ACL contracts are reachable on Sepolia.
-
-3. **Deploy Core Protocol to Sepolia**:
-   ```bash
-   npm run deploy:sepolia:core
-   ```
-   This deploys `RelayerVault`, `ConfidentialPairFactory`, mock testnet tokens (`USDC`, `USDT`), confidential wrappers (`cUSDC`, `cUSDT`), the canonical `cUSDC-cUSDT` AMM pair, seeds initial confidential liquidity, and automatically updates `frontend/.env.local`.
-
-4. **Fund a wallet with testnet tokens**:
-   ```bash
-   RECIPIENT=0xYourWalletAddress AMOUNT=1000 npm run faucet:sepolia
-   ```
-   Mints both public mock tokens (for vault deposits) and encrypted confidential tokens directly to your wallet for testing private swaps on Sepolia.
-
-5. **Start Frontend**:
-   ```bash
-   cd frontend && npm run dev
-   ```
-
-### UPI on-ramp and crypto redemption
-
-UPI is an entry-only payment rail. The local frontend mock verifies an INR payment and hands the settlement boundary to the relayer; the relayer must acquire or reserve real ERC-20 USDC/USDT backing before calling `relayerMint`. There is no UPI payout or INR off-ramp.
-
-The exit remains crypto-only:
-
-```text
-UPI -> real ERC-20 backing -> cUSDC/cUSDT -> private swap -> cUSDC/cUSDT
-    -> confidential burn -> relayer vault -> real ERC-20 -> user's wallet
-```
-
-Users submit `relayerBurnRequest` from the confidential wrapper and receive the corresponding underlying ERC-20 at the requesting wallet. The vault enforces that a relayer payout matches the request's wallet, token, and amount; the user escape hatch remains available after the configured delay.
-
-### USDT/USDC relayer pair
-
-The relayer flow is a bridge around confidential wrapper tokens. Deploy it with real ERC-20 addresses; do not substitute arbitrary token addresses on a public network:
-
-```bash
-TOKEN_ADDRESSES='{"USDT":"0x...","USDC":"0x...","LINK":"0x..."}' npm run deploy:relayer-pair
-```
-
-To deploy only verified assets you have configured, limit the catalog explicitly:
-
-```bash
-DEPLOY_SYMBOLS=USDC,USDT TOKEN_ADDRESSES='{"USDC":"0x...","USDT":"0x..."}' npm run deploy:relayer-pair
-```
-
-`DEPLOY_SYMBOLS` is optional and defaults to the full catalog. Every selected address must be a real ERC-20 on the target network; an RPC provider key does not replace these addresses.
-
-For a Sepolia test deployment using official USDC plus a clearly labeled mock USDT, use `MOCK_SYMBOLS=USDT` and provide only the official USDC address. Mock tokens have no financial value and must not be used as production backing.
-
-For a local demo with visible USDT and USDC assets, use the built-in mock public tokens:
-
-```bash
-npx hardhat node
-npm run deploy:relayer-local
-cp frontend/.env.relayer.local frontend/.env.local
-cd frontend && npm run dev
-```
-
-The local public tokens are mocks. To give a wallet test balances, keep the deployer account imported in MetaMask and run:
+The local deployment uses mock public tokens. To give a wallet test balances:
 
 ```bash
 LOCAL_USER=0xYourWalletAddress npm run faucet:local
 ```
 
-This mints 1,000 units of every local public token to that address. Set `LOCAL_TOKEN_AMOUNT=10000` for a larger balance. The wallet still needs Hardhat ETH for gas, but it does not need real USDT or USDC.
-
-This deploys one shared `RelayerVault`, one confidential wrapper per configured token, and direct pairs against cUSDC, then seeds encrypted test liquidity. The relayer signer must watch verified backing deposits or mock UPI settlement, mint the matching encrypted amount through the corresponding wrapper's `relayerMint`, and later submit encrypted burns followed by `batchWithdraw`. The vault does not automatically mint or swap: those actions require the off-chain relayer service and its accounting ledger.
-
-The frontend now includes the supported Ethereum token catalog: USDT, USDC, LINK, SHIB, UNI, AAVE, PEPE, MKR, DAI, LDO, ONDO, ENA, WETH, WBTC, CRV, ARB, OP, POL, GRT, SAND, MANA, APE, IMX, AXS, COMP, SNX, RPL, ENS, PAXG, and FLOKI. A token becomes swappable only after its confidential wrapper and pair are deployed and included in `VITE_TOKEN_LIST`; unconfigured entries remain disabled in the selector.
-
 ## Security properties
 
 - Uses ERC-7984 operator authorization; no custom unrestricted handle transfer is exposed.
 - All mutable encrypted values receive ACL access for their owner and the contract that must process them.
-- Fee-adjusted swap validation uses ciphertext-only arithmetic.
+- Fee-adjusted swap validation uses ciphertext-only arithmetic (`(reserveIn × BPS + amountIn × (BPS − fee)) × (reserveOut − amountOut) ≥ reserveIn × reserveOut × BPS`).
 - Pair reserves are capped at `1e15` base units so fee-adjusted products fit the available encrypted 128-bit multiplication range.
 - Reentrancy is blocked at pair entry points.
+- RelayerVault withdrawal requests are bound to `(recipient, token, amount)` — the relayer cannot redirect funds.
+- Time-locked escape hatch ensures users can always withdraw even if the relayer goes offline.
 
-This is a complete contract protocol baseline, not an audited production deployment. A browser UI, quote-service policy, integration tests on Sepolia, and independent audit are required before mainnet use.
+> This is a working protocol baseline, not an audited production deployment. A production quote service, integration tests on a public testnet, and an independent audit are required before mainnet use.
 
+## License
 
-
+[BSD-3-Clause-Clear](./LICENSE) — matches the SPDX headers in all Solidity source files.
