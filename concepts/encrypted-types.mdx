@@ -1,0 +1,73 @@
+---
+title: "Encrypted Integer and Boolean Types in Morphex"
+sidebarTitle: "Encrypted Types"
+description: "Learn the encrypted types Morphex uses for reserves, amounts, and receipts, and how to convert between widths safely inside the AMM circuits."
+---
+
+Morphex stores every sensitive value as an encrypted handle rather than plaintext. This page covers the ciphertext types the AMM uses, how they are imported from `@fhevm/solidity`, and why width conversions matter before multiplication.
+
+## The four types you will see
+
+| Type | Purpose | Typical use in Morphex |
+| --- | --- | --- |
+| `euint64` | Encrypted unsigned 64-bit integer | Token amounts, reserves, LP shares |
+| `euint128` | Encrypted unsigned 128-bit integer | Fee-adjusted invariant products inside the AMM |
+| `ebool` | Encrypted boolean | Success receipts and branchless control flow |
+| `externalEuint64` | User-submitted encrypted input | Off-chain ciphertext before it is validated on-chain |
+
+## Importing the types
+
+All Morphex contracts import the FHE types and the `FHE` precompile interface from the same entry point:
+
+```solidity
+import {FHE, ebool, euint64, euint128, externalEuint64} from "@fhevm/solidity/lib/FHE.sol";
+```
+
+This is the exact import used in `ConfidentialPair.sol` and `MorphexToken.sol`.
+
+## Converting external inputs to on-chain ciphertext
+
+When a user submits an encrypted amount, the contract must validate the accompanying proof and lift the handle into an `euint64`:
+
+```solidity
+function swapExactInput(
+    bool zeroForOne,
+    externalEuint64 encryptedAmountIn,
+    externalEuint64 encryptedAmountOut,
+    bytes calldata amountInProof,
+    bytes calldata amountOutProof
+) external nonReentrant returns (euint64 amountOut) {
+    euint64 requestedIn = FHE.fromExternal(encryptedAmountIn, amountInProof);
+    euint64 requestedOut = FHE.fromExternal(encryptedAmountOut, amountOutProof);
+    // ... circuit logic continues
+}
+```
+
+`FHE.fromExternal(handle, proof)` returns an `euint64` that the contract can use in subsequent encrypted operations. If the proof is invalid, this call reverts safely because the failure does not depend on the encrypted value itself.
+
+## Widening before multiplication
+
+The installed `@fhevm/solidity@0.11.1` library supports encrypted multiplication up to 128-bit results. Morphex caps reserves at `MAX_RESERVE = 1_000_000_000_000_000` (1e15) so that fee-adjusted products fit inside `euint128` without overflow.
+
+Before multiplying two `euint64` values, the contract widens them:
+
+```solidity
+euint128 product = FHE.mul(FHE.asEuint128(amount0), FHE.asEuint128(amount1));
+```
+
+`FHE.asEuint128(x)` casts an `euint64` to `euint128` so the multiplication circuit can return a 128-bit encrypted result. You should choose the smallest width that fits your data, then promote only when the operation demands it.
+
+## Why widths matter for the AMM
+
+Morphex enforces the constant-product invariant with cross-multiplication inside `euint128` space:
+
+```solidity
+euint128 adjustedInputReserve = FHE.add(
+    FHE.mul(FHE.asEuint128(reserveIn), uint128(BPS)),
+    FHE.mul(FHE.asEuint128(amountIn), uint128(BPS - FEE_BPS))
+);
+euint128 left = FHE.mul(adjustedInputReserve, FHE.asEuint128(FHE.sub(reserveOut, safeOut)));
+euint128 right = FHE.mul(invariant, uint128(BPS));
+```
+
+If the contract stayed in `euint64`, the fee-adjusted products would overflow. The `MAX_RESERVE` bound guarantees that the widened math remains valid for every allowed pool state.

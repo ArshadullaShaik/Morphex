@@ -1,0 +1,39 @@
+---
+title: "Environment Variables and Local Configuration"
+sidebarTitle: "Environment"
+description: "Reference for every environment variable Morphex uses in root .env and the frontend .env.local files written by deployment scripts."
+---
+
+Morphex deployment scripts and the frontend both rely on environment variables. The root `.env` supplies deployer credentials and network settings, while the scripts automatically write `frontend/.env.local` (and sometimes `frontend/.env.relayer.local`) so the UI knows which contracts to talk to.
+
+## Root .env variables
+
+Copy `.env.example` to `.env` in the repository root and fill in the values before running any deployment script.
+
+- **PRIVATE_KEY** — Deployer wallet private key. Format: `0x`-prefixed hex or 64 hex characters. Must hold Sepolia ETH for gas.
+- **MNEMONIC** — Alternative to `PRIVATE_KEY`. A 12- or 24-word BIP-39 mnemonic phrase.
+- **SEPOLIA_RPC_URL** — Custom Sepolia RPC endpoint. If omitted, the scripts fall back to Alchemy, then Infura, then the public node default.
+- **ALCHEMY_API_KEY** — Alchemy API key used to build a fallback RPC URL when `SEPOLIA_RPC_URL` is not set.
+- **INFURA_API_KEY** — Infura API key used as the next fallback after Alchemy.
+- **ETHERSCAN_API_KEY** — Etherscan API key for the `verify:sepolia` task.
+- **DEPLOY_MOCK_TOKENS** — Set to `1` to deploy `MockERC20` tokens for `USDC` and `USDT` so public vault deposits and testing work.
+- **DEPLOY_SYMBOLS** — Comma-separated list of symbols to deploy. Default is `USDC,USDT`.
+- **ESCAPE_HATCH_DELAY** — Delay in seconds for the `RelayerVault` escape hatch. Default is `86400` (1 day).
+
+## Frontend .env.local
+
+The deploy scripts write every `VITE_*` variable the frontend needs. You do not need to create this file by hand.
+
+Variables written by `scripts/deploy-relayer-pair.ts` (and mirrored into both `frontend/.env.local` and `frontend/.env.relayer.local`):
+
+- **VITE_PAIR_ADDRESS** — Address of the default trading pair.
+- **VITE_FACTORY_ADDRESS** — `ConfidentialPairFactory` address.
+- **VITE_MORPH_ADDRESS** — Default sell token address (e.g., `cUSDT`).
+- **VITE_MUSD_ADDRESS** — Default quote token address (e.g., `cUSDC`).
+- **VITE_TOKEN_LIST** — JSON array of deployed confidential tokens with name, symbol, and address.
+- **VITE_PAIR_LIST** — JSON map of token-pair keys to pair contract addresses.
+- **VITE_RELAYER_VAULT_ADDRESS** — `RelayerVault` address for confidential redemptions.
+- **VITE_PUBLIC_TOKEN_LIST** — JSON array of public tokens with name, symbol, and address.
+- **VITE_CHAIN_ID** — Chain ID of the deployed network (`11155111` for Sepolia, `31337` for Hardhat local).
+- **VITE_CHAIN_NAME** — Human-readable network name (`Sepolia Testnet` or `Hardhat Local`).
+- **VITE_RPC_URL** — RPC endpoint the frontend should use.

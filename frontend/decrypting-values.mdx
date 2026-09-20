@@ -1,0 +1,141 @@
+---
+title: "Decrypt Encrypted Handles via ACL and KMS"
+sidebarTitle: "Decrypting Values"
+description: "Learn how Morphex lets users decrypt their confidential balances with an ephemeral keypair, an EIP-712 signature, and the Zama KMS over a 7-day session."
+---
+
+Morphex stores token balances as encrypted handles on chain. To show a user their real balances, the frontend runs a `userDecrypt` flow that proves ownership to the Zama KMS without ever exposing a private key outside the browser. This page walks through the full flow and shows the exact helpers that manage it.
+
+<Steps>
+  <Step title="Contract grants ACL permission">
+    The contract must have called `FHE.allow(handle, userAddress)` so the KMS knows this user is authorized to decrypt that handle. Morphex does this automatically in `_storeSwapReceipt`, `_storeLiquidityReceipt`, and `_allowPoolState`.
+  </Step>
+  <Step title="Generate an ephemeral keypair">
+    The frontend creates a fresh keypair with `fhevm.generateKeypair()`. The private key stays in the browser; the KMS never sees it.
+  </Step>
+  <Step title="Sign an EIP-712 authorization">
+    The user signs a structured message that authorizes the public key to decrypt handles for a set of contract addresses for a fixed duration. Morphex uses `fhevm.createEIP712(publicKey, contractAddresses, startTimestamp, durationDays)`.
+  </Step>
+  <Step title="Call userDecrypt">
+    The frontend sends the handles, ephemeral keys, signature, and session parameters to `fhevm.userDecrypt(...)`. The KMS verifies the signature and ACL, then returns the cleartext values.
+  </Step>
+</Steps>
+
+## Session helpers
+
+Morphex caches the keypair and signature in `localStorage` so the user does not re-sign for every balance refresh. A session lasts 7 days and covers every token address the user needed at creation time.
+
+```typescript
+const SESSION_KEY = 'morphex_decryption_session';
+
+function getValidSession(userAddress: string, contractAddresses: string[]): DecryptionSession | null {
+  try {
+    const raw = localStorage.getItem(`${SESSION_KEY}_${userAddress.toLowerCase()}`);
+    if (!raw) return null;
+    const session: DecryptionSession = JSON.parse(raw);
+    const now = Math.floor(Date.now() / 1000);
+    const expiry = session.startTimestamp + session.durationDays * 86400;
+    if (now >= expiry - 3600) return null; // Expired or expiring within 1 hour
+    const sessionAddrs = new Set(session.contractAddresses.map((a) => a.toLowerCase()));
+    const allCovered = contractAddresses.every((a) => sessionAddrs.has(a.toLowerCase()));
+    if (!allCovered) return null;
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function saveSession(session: DecryptionSession) {
+  try {
+    localStorage.setItem(`${SESSION_KEY}_${session.address.toLowerCase()}`, JSON.stringify(session));
+  } catch {
+    // Ignore storage quota
+  }
+}
+```
+
+## Fetch confidential balances
+
+The `fetchConfidentialBalances` helper reads every deployed token's `confidentialBalanceOf`, filters out zero handles, and decrypts the rest in a single `userDecrypt` batch. If no valid session exists, it creates one on demand.
+
+```typescript
+async function fetchConfidentialBalances(address: string, provider: BrowserProvider) {
+  if (deployedTokens.length === 0) return [];
+  if (config.chainId !== TESTNET_CHAIN_ID) {
+    throw new Error('Confidential balances require the Sepolia Zama relayer. Switch the app to Sepolia to decrypt them.');
+  }
+
+  const contracts = deployedTokens.map((token) => new Contract(token.address, confidentialBalanceAbi, provider));
+  const entries = await Promise.all(contracts.map(async (contract, index) => {
+    const [handle, decimals] = await Promise.all([
+      contract.confidentialBalanceOf(address) as Promise<string>,
+      contract.decimals() as Promise<bigint>,
+    ]);
+    return { token: deployedTokens[index], handle, decimals: Number(decimals) };
+  }));
+  const zeroHandle = /^0x0{64}$/i;
+  const decryptableEntries = entries.filter((entry) => !zeroHandle.test(entry.handle));
+  const zeroBalances = entries
+    .filter((entry) => zeroHandle.test(entry.handle))
+    .map(({ token, decimals }) => ({ token, balance: formatUnits(0n, decimals) }));
+  if (decryptableEntries.length === 0) return zeroBalances;
+
+  await initializeFheSdk();
+  const fhevm = await createInstance({ ...SepoliaConfigV2, network: getEthereum() });
+  const contractAddresses = decryptableEntries.map((entry) => entry.token.address);
+
+  let session = getValidSession(address, contractAddresses);
+
+  if (!session) {
+    const startTimestamp = Math.floor(Date.now() / 1000);
+    const keypair = fhevm.generateKeypair();
+    const durationDays = 7; // 7-day automated session
+    const eip712 = fhevm.createEIP712(keypair.publicKey, contractAddresses, startTimestamp, durationDays);
+    const signer = await provider.getSigner(address);
+    const { EIP712Domain: _domainType, ...signingTypes } = eip712.types;
+    const signature = await signer.signTypedData(
+      eip712.domain,
+      signingTypes as unknown as Record<string, Array<{ name: string; type: string }>>,
+      eip712.message,
+    );
+    session = {
+      keypair,
+      signature,
+      startTimestamp,
+      durationDays,
+      contractAddresses,
+      address,
+    };
+    saveSession(session);
+  }
+
+  const clearValues = await fhevm.userDecrypt(
+    decryptableEntries.map(({ handle, token }) => ({ handle, contractAddress: token.address })),
+    session.keypair.privateKey,
+    session.keypair.publicKey,
+    session.signature,
+    session.contractAddresses,
+    address,
+    session.startTimestamp,
+    session.durationDays,
+  );
+
+  const decryptedBalances = decryptableEntries.map(({ token, handle, decimals }) => {
+    const handleKey = handle.toLowerCase();
+    const matchingKey = Object.keys(clearValues).find(
+      (k) => k.toLowerCase() === handleKey || k.toLowerCase().replace(/^0x/, '') === handleKey.replace(/^0x/, ''),
+    );
+    const rawVal = matchingKey ? clearValues[matchingKey as `0x${string}`] : 0n;
+    const bigVal = typeof rawVal === 'bigint' ? rawVal : BigInt(rawVal ?? 0);
+    return {
+      token,
+      balance: formatUnits(bigVal, decimals),
+    };
+  });
+  return [...decryptedBalances, ...zeroBalances];
+}
+```
+
+<Note>
+  The private key stays in the browser. The KMS never sees it. Morphex sessions last 7 days per keypair, and the app refreshes the session automatically when it is within one hour of expiry or when new contract addresses are added.
+</Note>

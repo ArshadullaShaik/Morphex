@@ -1,0 +1,95 @@
+---
+title: "Ratio Checks Without Encrypted Division: Cross-Multiplication"
+sidebarTitle: "No FHE Division"
+description: "Learn how Morphex verifies swap quotes and LP share targets using cross-multiplication instead of encrypted division, which is unavailable in fhEVM 0.11.1."
+---
+
+The installed `@fhevm/solidity@0.11.1` library exposes encrypted division only by a public scalar, not ciphertext divided by ciphertext. Encrypted square root and other transcendentals are similarly unavailable at usable circuit depth. This design constraint shapes every arithmetic check in Morphex. Instead of solving for an output amount on-chain, the user supplies an encrypted target and the pair verifies it with multiplication-only inequalities.
+
+## Why the AMM cannot compute amountOut on-chain
+
+In a traditional constant-product AMM, the contract computes:
+
+```text
+amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
+```
+
+This requires dividing one encrypted value by another. Because fhEVM 0.11.1 does not support ciphertext division, Morphex inverts the flow: the user encrypts their desired `amountOut` off-chain, and the contract checks whether that target preserves the invariant.
+
+## Verifying swaps with cross-multiplication
+
+The pair checks the constant-product inequality by rearranging it so every term is a multiplication. Here is the exact `_preservesInvariant` function from `ConfidentialPair.sol`:
+
+```solidity
+function _preservesInvariant(
+    euint64 amountIn,
+    euint64 amountOut,
+    euint64 reserveIn,
+    euint64 reserveOut
+) private returns (ebool) {
+    ebool hasOutput = FHE.le(amountOut, reserveOut);
+    euint64 safeOut = FHE.select(hasOutput, amountOut, FHE.asEuint64(0));
+    euint128 adjustedInputReserve = FHE.add(
+        FHE.mul(FHE.asEuint128(reserveIn), uint128(BPS)),
+        FHE.mul(FHE.asEuint128(amountIn), uint128(BPS - FEE_BPS))
+    );
+    euint128 left = FHE.mul(adjustedInputReserve, FHE.asEuint128(FHE.sub(reserveOut, safeOut)));
+    euint128 invariant = FHE.mul(FHE.asEuint128(reserveIn), FHE.asEuint128(reserveOut));
+    euint128 right = FHE.mul(invariant, uint128(BPS));
+    return FHE.and(hasOutput, FHE.ge(left, right));
+}
+```
+
+The inequality being enforced is:
+
+```text
+(reserveIn * BPS + amountIn * (BPS - fee)) * (reserveOut - amountOut) >= reserveIn * reserveOut * BPS
+```
+
+Every operation is encrypted multiplication or addition. There is no division. If the user's target is too high, `left` falls below `right`, `valid` becomes false, and the contract executes an encrypted no-op.
+
+## Verifying LP share targets with cross-multiplication
+
+Liquidity addition works the same way. The user supplies an encrypted `shareTarget`, and the pair verifies proportional equality on both sides. Here is the exact `_isProportionalLiquidity` function:
+
+```solidity
+function _isProportionalLiquidity(
+    euint64 amount0,
+    euint64 amount1,
+    euint64 shares
+) private returns (ebool) {
+    euint128 amount0Scaled = FHE.mul(FHE.asEuint128(amount0), FHE.asEuint128(_totalShares));
+    euint128 amount1Scaled = FHE.mul(FHE.asEuint128(amount1), FHE.asEuint128(_totalShares));
+    euint128 shares0 = FHE.mul(FHE.asEuint128(shares), FHE.asEuint128(_reserve0));
+    euint128 shares1 = FHE.mul(FHE.asEuint128(shares), FHE.asEuint128(_reserve1));
+    return FHE.and(
+        FHE.gt(shares, uint64(0)),
+        FHE.and(FHE.eq(amount0Scaled, shares0), FHE.eq(amount1Scaled, shares1))
+    );
+}
+```
+
+The proportional check is:
+
+```text
+amount0 * totalShares == shares * reserve0
+amount1 * totalShares == shares * reserve1
+```
+
+Again, only encrypted multiplication and equality are used. No division is required.
+
+## What happens when the target is wrong
+
+A bad or stale target is not a revert. The contract computes `valid = false`, then:
+
+1. Sets `acceptedIn = 0` and `amountOut = 0` via `FHE.select`
+2. Refunds the full pulled input with `FHE.sub(pulledIn, acceptedIn)`
+3. Stores an encrypted receipt with `success = false`
+
+The transaction succeeds on-chain, but the caller decrypts the receipt locally and sees that nothing changed. This branchless design prevents any public signal about whether a trade was accepted or rejected.
+
+## Design consequences for integrators
+
+- **Quote off-chain**: Your frontend or backend must compute the encrypted target before submitting it. The contract only validates, never computes.
+- **Handle stale quotes gracefully**: Because reserves are encrypted, a target computed against old state may be invalid by the time it lands. The encrypted no-op and refund pattern makes this safe.
+- **Stay within `MAX_RESERVE`**: The `MAX_RESERVE = 1e15` cap ensures that every multiplication inside `_preservesInvariant` and `_isProportionalLiquidity` fits in `euint128` without overflow.

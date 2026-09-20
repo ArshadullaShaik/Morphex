@@ -1,0 +1,68 @@
+---
+title: "MockERC20: Test-Only Public ERC-20 Token"
+sidebarTitle: "MockERC20"
+description: "Reference for MockERC20, a minimal owner-mintable ERC-20 used only for local Hardhat and Sepolia test deployments of Morphex."
+---
+
+`MockERC20` is a minimal test ERC-20 used to stand in for public stablecoins like USDC or USDT during local Hardhat and Sepolia dry runs. It is deployed automatically when `DEPLOY_MOCK_TOKENS=1` or when a symbol is listed in `MOCK_SYMBOLS`. Do not use it in production.
+
+## Overview
+
+```solidity
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+
+contract MockERC20 is ERC20, Ownable { ... }
+```
+
+## Constructor
+
+```solidity
+constructor(string memory name_, string memory symbol_, uint8 decimals_)
+    ERC20(name_, symbol_) Ownable(msg.sender)
+```
+
+<ParamField path="name_" type="string">
+  Human-readable token name.
+</ParamField>
+
+<ParamField path="symbol_" type="string">
+  Ticker symbol.
+</ParamField>
+
+<ParamField path="decimals_" type="uint8">
+  Fixed decimals returned by `decimals()`.
+</ParamField>
+
+The deployer becomes the Ownable owner and the only address that can mint.
+
+## Functions
+
+### decimals
+
+```solidity
+function decimals() public view virtual override returns (uint8);
+```
+
+Returns the immutable value passed to the constructor. `scripts/deploy-relayer-pair.ts` deploys mocks with `decimals_ = 6` to match USDC and USDT.
+
+### mint
+
+```solidity
+function mint(address to, uint256 amount) external onlyOwner;
+```
+
+Mints public ERC-20 tokens to `to`. Owner-gated. Used by the faucet scripts (`npm run faucet:local`, `npm run faucet:sepolia`).
+
+## Deployment
+
+`MockERC20` is deployed by `scripts/deploy-relayer-pair.ts` when either:
+
+- `DEPLOY_MOCK_TOKENS=1` is set for the entire deployment run, or
+- The token's symbol appears in `MOCK_SYMBOLS` (comma-separated).
+
+If neither is set, the script expects real ERC-20 addresses in the `TOKEN_ADDRESSES` JSON environment variable.
+
+<Note>
+  MockERC20 has no supply cap and no access control on `decimals`. It exists purely for testing. Do not deploy or interact with it on mainnet.
+</Note>

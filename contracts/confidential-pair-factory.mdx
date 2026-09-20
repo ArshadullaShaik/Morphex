@@ -1,0 +1,77 @@
+---
+title: "ConfidentialPairFactory: Deploy and Register Pairs"
+sidebarTitle: "PairFactory"
+description: "Reference for ConfidentialPairFactory, the canonical registry that deploys one ConfidentialPair per ordered pair of ERC-7984 tokens."
+---
+
+`ConfidentialPairFactory` is a minimal registry and deployer for Morphex pairs. It guarantees canonical ordering (one pair per token combination), records the pair in both directions of a lookup map, and appends it to an ordered list for enumeration.
+
+## Overview
+
+```solidity
+import {ConfidentialPair} from "./ConfidentialPair.sol";
+
+contract ConfidentialPairFactory { ... }
+```
+
+No inheritance. No access control. Anyone can call `createPair`, but each token combination can only be registered once.
+
+## State
+
+```solidity
+mapping(address => mapping(address => address)) public getPair;
+address[] public allPairs;
+```
+
+- `getPair[tokenA][tokenB]` returns the pair address for either ordering (both directions are populated on creation).
+- `allPairs` is an ordered list of every pair ever created by this factory.
+
+## Constructor
+
+The factory has no constructor arguments.
+
+## Functions
+
+### allPairsLength
+
+```solidity
+function allPairsLength() external view returns (uint256);
+```
+
+Returns the total number of pairs created by this factory. Use for pagination when enumerating `allPairs`.
+
+### createPair
+
+```solidity
+function createPair(address tokenA, address tokenB) external returns (address pair);
+```
+
+Deploys a new `ConfidentialPair` for the two ERC-7984 tokens.
+
+<ParamField path="tokenA" type="address">
+  First token. Must be non-zero.
+</ParamField>
+
+<ParamField path="tokenB" type="address">
+  Second token. Must be non-zero and distinct from `tokenA`.
+</ParamField>
+
+Requirements:
+
+- `tokenA != tokenB`
+- Neither address is zero
+- No pair already exists for the ordered combination
+
+The factory orders `(token0, token1)` so `token0 < token1`, deploys `new ConfidentialPair(token0, token1)`, and registers the deployed pair in both directions of `getPair` before pushing it onto `allPairs`. Emits `PairCreated`.
+
+## Events
+
+```solidity
+event PairCreated(address indexed token0, address indexed token1, address pair, uint256 pairCount);
+```
+
+Fired once per successful `createPair` call. `pairCount` equals `allPairs.length` after the new pair is appended.
+
+<Note>
+  `PairCreated` carries plaintext token and pair addresses. Only amounts are encrypted in Morphex; identities and topology stay public.
+</Note>

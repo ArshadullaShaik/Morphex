@@ -1,0 +1,60 @@
+---
+title: "Why FHE.select Replaces require in Confidential DeFi"
+sidebarTitle: "FHE.select vs require"
+description: "Learn why Morphex uses branchless FHE.select instead of require() for encrypted checks, and how encrypted receipts prevent information leakage about trade outcomes."
+---
+
+In traditional DeFi, a failed `require()` reverts the transaction and emits no state change. That behavior leaks information when the failure condition depends on an encrypted value. Morphex replaces `require()` with branchless `FHE.select` so that every transaction produces an encrypted outcome, and only the caller learns whether it succeeded.
+
+## The leakage problem with require()
+
+A `require()` revert is a public event. If the revert depends on an encrypted value (for example, an insufficient balance check or an invalid swap quote), the revert itself leaks one bit: the check failed. In an AMM, that is enough for a searcher to infer trade sizing, LP positions, or slippage tolerance. Morphex avoids this by never letting an encrypted boolean trigger a public revert.
+
+## The branchless pattern in Morphex
+
+Instead of reverting, the contract computes an encrypted validity flag and uses `FHE.select` to choose between the requested value and zero:
+
+```solidity
+ebool valid = FHE.and(
+    FHE.gt(pulledIn, uint64(0)),
+    FHE.and(
+        FHE.le(FHE.add(reserveIn, pulledIn), MAX_RESERVE),
+        FHE.and(FHE.gt(reserveIn, uint64(0)), _preservesInvariant(pulledIn, requestedOut, reserveIn, reserveOut))
+    )
+);
+
+euint64 acceptedIn = FHE.select(valid, pulledIn, FHE.asEuint64(0));
+amountOut = FHE.select(valid, requestedOut, FHE.asEuint64(0));
+_refund(inputToken, msg.sender, FHE.sub(pulledIn, acceptedIn));
+```
+
+This snippet is taken directly from `ConfidentialPair.swapExactInput`. Whether the swap is valid or not, the transaction succeeds on-chain. The difference is encrypted: `acceptedIn` equals `pulledIn` when valid, and zero otherwise. Any excess input is refunded through the same encrypted transfer path.
+
+## Encrypted receipts for local decryption
+
+After the swap, the contract stores an encrypted receipt so the caller (and only ACL-authorized parties) can decrypt whether their swap took:
+
+```solidity
+_storeSwapReceipt(msg.sender, acceptedIn, deliveredOut, valid);
+```
+
+The receipt contains `euint64 amountIn`, `euint64 amountOut`, and `ebool success`. The contract grants ACL access to the caller, so the frontend can later call `userDecrypt` on these handles. No one else can learn the outcome unless they were explicitly authorized.
+
+## Where plaintext require() is still safe
+
+Plaintext `require()` remains fine for checks that do not depend on encrypted values. Morphex uses it for public parameters such as:
+
+- Zero-address checks (`token0_ != address(0)`)
+- Token ordering (`token0_ < token1_`)
+- The plaintext `MAX_RESERVE` upper bound on the public side of `FHE.le`
+
+These checks are safe because their failure conditions are already public knowledge.
+
+## Summary
+
+| Pattern | When to use | Why |
+| --- | --- | --- |
+| `FHE.select` | Encrypted conditions (balances, reserves, invariants) | Prevents one-bit leakage about the encrypted state |
+| `require()` | Public conditions (addresses, ordering, constants) | Safe because the condition is already public |
+
+By combining branchless selection with encrypted receipts, Morphex ensures that on-chain observers cannot distinguish a successful swap from a refunded no-op.

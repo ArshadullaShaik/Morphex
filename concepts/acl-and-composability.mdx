@@ -1,0 +1,101 @@
+---
+title: "The fhEVM ACL Grant Model for Contract Composability"
+sidebarTitle: "ACL Model"
+description: "Understand how Morphex uses fhEVM ACL grants to let contracts and users operate on encrypted handles, and how transient grants enable safe ERC-7984 composability."
+---
+
+Every ciphertext handle in the fhEVM has an on-chain access control list (ACL). Only addresses listed in that ACL can perform further encrypted operations on the handle or request decryption through the KMS gateway. This page explains the three grant operations Morphex uses, how they enable composability with ERC-7984 tokens, and where to find them in the contract source.
+
+## The three grant operations
+
+| Operation | Persistence | Typical use in Morphex |
+| --- | --- | --- |
+| `FHE.allowThis(handle)` | Persistent for the current contract | Grant the pair contract itself rights to reuse handles in future calls |
+| `FHE.allow(handle, address)` | Persistent for the target address | Grant the receipt owner rights to decrypt their swap or liquidity result |
+| `FHE.allowTransient(handle, address)` | One-shot, scoped to the current transaction | Hand a ciphertext to an ERC-7984 token contract for `confidentialTransferFrom` without long-lived exposure |
+
+## How Morphex grants access to receipts
+
+After a swap or liquidity operation, the contract stores encrypted receipts and immediately grants access to the caller. This is the exact pattern from `ConfidentialPair.sol`:
+
+```solidity
+function _storeSwapReceipt(address account, euint64 amountIn, euint64 amountOut, ebool success) private {
+    _lastSwap[account] = SwapReceipt(amountIn, amountOut, success);
+    FHE.allowThis(amountIn);
+    FHE.allowThis(amountOut);
+    FHE.allowThis(success);
+    FHE.allow(amountIn, account);
+    FHE.allow(amountOut, account);
+    FHE.allow(success, account);
+}
+```
+
+`FHE.allowThis` lets the contract itself read or forward those handles later (for example, if a future version supports batching or aggregation). `FHE.allow(..., account)` lets the caller decrypt the receipt via the KMS gateway. No other address is included in the ACL, so the outcome remains confidential.
+
+The liquidity receipt follows the same pattern:
+
+```solidity
+function _storeLiquidityReceipt(
+    address account,
+    euint64 amount0,
+    euint64 amount1,
+    euint64 shares,
+    ebool success
+) private {
+    _lastLiquidity[account] = LiquidityReceipt(amount0, amount1, shares, success);
+    FHE.allowThis(amount0);
+    FHE.allowThis(amount1);
+    FHE.allowThis(shares);
+    FHE.allowThis(success);
+    FHE.allow(amount0, account);
+    FHE.allow(amount1, account);
+    FHE.allow(shares, account);
+    FHE.allow(success, account);
+}
+```
+
+## Transient grants for token composability
+
+When the pair pulls tokens from a user or pushes tokens back, it must hand the encrypted amount to the ERC-7984 token contract. A persistent grant would let the token contract operate on that handle forever. Instead, Morphex uses `FHE.allowTransient`:
+
+```solidity
+function _pull(IERC7984 token, address from, euint64 amount) private returns (euint64) {
+    FHE.allowTransient(amount, address(token));
+    return token.confidentialTransferFrom(from, address(this), amount);
+}
+
+function _push(IERC7984 token, address to, euint64 amount) private returns (euint64) {
+    FHE.allowTransient(amount, address(token));
+    return token.confidentialTransfer(to, amount);
+}
+```
+
+`FHE.allowTransient(amount, address(token))` grants the token contract rights only for the duration of the current transaction. Once the call returns, the token contract can no longer use the handle. This is essential for composability: the pair can safely interact with any ERC-7984 token without exposing user balances beyond the single transfer.
+
+## Pool state grants
+
+After every state-changing operation, the pair also grants access to its own encrypted state so that authorized frontends and future contracts can read reserves and shares:
+
+```solidity
+function _allowPoolState() private {
+    FHE.allowThis(_reserve0);
+    FHE.allowThis(_reserve1);
+    FHE.allowThis(_totalShares);
+    FHE.allowThis(_shares[msg.sender]);
+    FHE.allow(_shares[msg.sender], msg.sender);
+}
+```
+
+This ensures that `msg.sender` can decrypt their own LP balance while the contract retains the ability to reuse pool handles in subsequent operations.
+
+## Decrypting values in the frontend
+
+Once a receipt is stored and granted, the caller can request decryption through the KMS gateway. See [Decrypting Values](/frontend/decrypting-values) for the frontend integration steps.
+
+## Summary
+
+- Use `FHE.allowThis` when the current contract needs to reuse a handle in future calls.
+- Use `FHE.allow(handle, address)` when you want a specific user or contract to decrypt or operate on a handle indefinitely.
+- Use `FHE.allowTransient(handle, address)` when you need to hand a handle to another contract for a single operation without long-lived exposure.
+
+Morphex combines all three to keep swaps, liquidity operations, and token transfers composable while preserving confidentiality.

@@ -1,0 +1,57 @@
+---
+title: "How the fhEVM Coprocessor, KMS, and ACL Fit Together"
+sidebarTitle: "fhEVM Model"
+description: "Understand the fhEVM architecture powering Morphex: how the host chain, coprocessor network, and KMS collaborate to execute encrypted transactions without revealing plaintext."
+---
+
+Morphex is built on Zama's fhEVM stack, which lets Solidity contracts compute on encrypted data. This page explains how the host chain, coprocessor network, and key management service (KMS) work together so you can reason about latency, trust assumptions, and the ACL grants your transactions produce.
+
+## The four roles in an fhEVM transaction
+
+<CardGroup cols={2}>
+  <Card title="Wallet / Frontend" icon="user">
+    Encrypts inputs locally, submits ciphertext handles and proofs to the host chain, and later decrypts results via the KMS gateway.
+  </Card>
+
+  <Card title="Host Chain" icon="link">
+    Stores ciphertext handles, ACL permissions, and contract bytecode. It does not see plaintext values. It forwards FHE operations to the coprocessor.
+  </Card>
+
+  <Card title="Coprocessor Network" icon="server">
+    Evaluates encrypted circuits off-chain and returns encrypted results with correctness proofs. The host chain verifies the proof before accepting the state update.
+  </Card>
+
+  <Card title="KMS (Key Management Service)" icon="key">
+    Holds the network-wide FHE secret via threshold decryption. It gates every decryption request against the on-chain ACL so only authorized addresses can learn plaintext.
+  </Card>
+</CardGroup>
+
+## A Morphex transaction end to end
+
+<Steps>
+  <Step title="Encrypt inputs locally">
+    Your frontend uses the Zama SDK to encrypt token amounts into `externalEuint64` values and generate the input proofs. These proofs attest that the ciphertext was formed correctly with respect to the public FHE parameters.
+  </Step>
+  <Step title="Submit to the host chain">
+    You call a Morphex contract function such as `swapExactInput` and pass the encrypted handles plus proofs. The contract imports `FHE.fromExternal(...)` from `@fhevm/solidity` to validate and lift each `externalEuint64` into an on-chain `euint64`.
+  </Step>
+  <Step title="Compose ciphertext operations">
+    The contract runs encrypted arithmetic: `FHE.add`, `FHE.mul`, `FHE.select`, and comparisons like `FHE.le`. Each operation is a request to the coprocessor network, which evaluates the circuit off-chain and returns an encrypted result handle plus a proof.
+  </Step>
+  <Step title="Update state and apply ACL grants">
+    The host chain stores the new encrypted handles (for example, updated reserves or LP shares). The contract then calls ACL grants such as `FHE.allowThis(handle)` and `FHE.allow(handle, msg.sender)` so the right parties can later operate on or decrypt those values.
+  </Step>
+  <Step title="Decrypt results via KMS">
+    When your frontend requests decryption, the KMS checks the on-chain ACL. If your address is authorized, the KMS performs threshold decryption and returns the plaintext. No one else can decrypt the same handle unless they were also granted access.
+  </Step>
+</Steps>
+
+## What the base contract provides
+
+Morphex contracts inherit from `ZamaEthereumConfig`, which wires them to the Zama network configuration (gateway URLs, coprocessor addresses, and KMS parameters). You do not set these manually. The installed library version is `@fhevm/solidity@0.11.1`, which provides the `FHE` precompile interface and the `euint64`, `euint128`, `ebool`, and `externalEuint64` types.
+
+## Why this matters for developers
+
+- **Gas is different**: FHE operations are priced by circuit complexity, not by EVM opcode cost. Expect higher gas for multiplications and comparisons than for simple storage writes.
+- **ACL is mandatory**: If you forget to grant an address access to a ciphertext handle, that address cannot decrypt it or use it in a subsequent contract call. Morphex handles grants automatically inside `_storeSwapReceipt`, `_storeLiquidityReceipt`, and `_allowPoolState`.
+- **Proofs are required**: Every `externalEuint64` must carry a valid input proof. The `FHE.fromExternal(...)` call reverts if the proof is missing or malformed, which is a safe public failure because it does not depend on the encrypted value itself.
