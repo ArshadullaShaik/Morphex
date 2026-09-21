@@ -1,5 +1,16 @@
 import { ethers, fhevm } from "hardhat";
 import { promises as fs } from "node:fs";
+import http from "node:http";
+
+const port = Number(process.env.PORT) || 10000;
+const host = "0.0.0.0";
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Morphex Relayer Bot is healthy and running\n");
+});
+server.listen(port, host, () => {
+  console.log(`Relayer health check server listening on ${host}:${port}`);
+});
 
 const PROCESSED_FILE = ".relayer-processed.json";
 
