@@ -8,7 +8,7 @@ Building on fhEVM introduces constraints that do not exist in plaintext EVM deve
 
 ## Gas costs vs plaintext
 
-Encrypted arithmetic is orders of magnitude more expensive than plaintext operations. A single `FHE.mul(euint128, euint128)` far exceeds the cost of a plaintext multiply. That is why `MAX_RESERVE` is capped at `1e15` base units: fee adjusted products must fit inside 128 bit encrypted multiplication. It is also why Morphex uses cross multiplication instead of division. Fewer FHE operations per transaction means cheaper gas.
+Encrypted arithmetic is orders of magnitude more expensive than plaintext operations. A single `FHE.mul(euint128, euint128)` far exceeds the cost of a plaintext multiply. That is why `MAX_RESERVE` is capped at `1e15` base units: fee-adjusted products must fit inside 128-bit encrypted multiplication. It is also why Morphex uses cross-multiplication instead of division. Fewer FHE operations per transaction means cheaper gas.
 
 ## Why you cannot console.log an encrypted value
 
@@ -24,12 +24,12 @@ When `require()` reverts based on a check involving an encrypted value, the reve
 
 ## Why encrypted division is missing
 
-fhEVM currently exposes encrypted division only by a public scalar, not ciphertext divided by ciphertext. Morphex converts ratio checks to multiplication inequalities so the AMM invariant can still be validated without encrypted division. For the design rationale, see [No Encrypted Division](/concepts/no-encrypted-division).
+fhEVM currently exposes encrypted division only by a public scalar, not ciphertext divided by ciphertext. Encrypted square root and other transcendentals are similarly unavailable at usable circuit depth. Morphex converts ratio checks to multiplication inequalities so the AMM invariant can still be validated without encrypted division. For the design rationale, see [No Encrypted Division](/concepts/no-encrypted-division).
 
 ## FAQ
 
 <Accordion title="Can the relayer steal my funds?">
-  No. The relayer cannot redirect amounts because `batchWithdraw` requires the recipient, token, and amount to match the stored request. A time locked escape hatch (default 24 hours) lets users self withdraw even if the relayer goes offline.
+  No. The relayer cannot redirect amounts because `batchWithdraw` requires the recipient, token, and amount to match the stored request. A time-locked escape hatch (default 24 hours) lets users self-withdraw even if the relayer goes offline.
 </Accordion>
 
 <Accordion title="What is leaked publicly?">
@@ -37,11 +37,11 @@ fhEVM currently exposes encrypted division only by a public scalar, not cipherte
 </Accordion>
 
 <Accordion title="Why cap reserves at 1e15?">
-  The fee adjusted invariant product must fit inside the 128 bit encrypted multiplication range. Capping reserves at `1e15` base units guarantees the product does not overflow during FHE arithmetic.
+  The fee-adjusted invariant product must fit inside the 128-bit encrypted multiplication range. Capping reserves at `1e15` base units guarantees the product does not overflow during FHE arithmetic.
 </Accordion>
 
 <Accordion title="Is Morphex audited?">
-  No. The README states this is a working baseline, not an audited production deployment. Do not use it with mainnet funds. A production quote service, integration tests on a public testnet, and an independent audit are required before mainnet use.
+  No. Morphex is a working baseline, not an audited production deployment. Do not use it with mainnet funds. A production quote service, integration tests on a public testnet, and an independent audit are required before mainnet use.
 </Accordion>
 
 <Accordion title="Which networks are supported?">
