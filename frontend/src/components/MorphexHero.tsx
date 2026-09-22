@@ -13,7 +13,7 @@ import { ActiveNavTab } from '../types';
 
 interface MorphexHeroProps {
   onLaunchApp: (tab?: ActiveNavTab) => void;
-  onOpenDocs: () => void;
+  onOpenDocs?: () => void;
 }
 
 export const MorphexHero: React.FC<MorphexHeroProps> = ({
@@ -150,9 +150,16 @@ export const MorphexHero: React.FC<MorphexHeroProps> = ({
             <span>•</span>
             <span>Sepolia Testnet (11155111)</span>
             <span>•</span>
-            <button onClick={onOpenDocs} className="hover:text-[#192837] transition-colors underline">
+            <a
+              id="hero-docs-link"
+              href="https://srm-a9eb4485.mintlify.site/index"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => onOpenDocs?.()}
+              className="hover:text-[#192837] transition-colors underline cursor-pointer"
+            >
               Documentation
-            </button>
+            </a>
           </div>
         </div>
       </footer>

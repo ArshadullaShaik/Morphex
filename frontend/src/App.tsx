@@ -6,7 +6,6 @@ import { TokenSelectModal } from './components/TokenSelectModal';
 import { SettingsModal } from './components/SettingsModal';
 import { ConnectWalletModal } from './components/ConnectWalletModal';
 import { GlobalSearchModal } from './components/GlobalSearchModal';
-import { DocsModal } from './components/DocsModal';
 import { ExploreView } from './components/ExploreView';
 import { PoolView } from './components/PoolView';
 import { PortfolioView } from './components/PortfolioView';
@@ -17,6 +16,8 @@ import { GovernanceView } from './components/GovernanceView';
 import { ETHEREUM_TOKEN, fetchTokenPrices, TESTNET_TOKENS } from './data/tokens';
 import { getMintedTokenBalance } from './data/onRampStore';
 import { Token, ActiveNavTab } from './types';
+
+const DOCS_URL = 'https://srm-a9eb4485.mintlify.site/index';
 
 export default function App() {
   // Core state machine: Landing view vs. DEX App views
@@ -40,7 +41,6 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState<boolean>(false);
   const [isSearchModalOpen, setIsSearchModalOpen] = useState<boolean>(false);
-  const [isDocsModalOpen, setIsDocsModalOpen] = useState<boolean>(false);
 
   // Synchronize onramp minted events
   useEffect(() => {
@@ -189,6 +189,10 @@ export default function App() {
     setIsLandingView(false);
   };
 
+  const handleOpenDocs = () => {
+    window.open(DOCS_URL, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="min-h-screen w-full relative flex flex-col justify-between selection:bg-[#7342E2]/20 selection:text-[#192837] font-sans">
       {/* ── 1. Full-Viewport Ambient Background Video Layer ── */}
@@ -207,7 +211,7 @@ export default function App() {
         onTabChange={handleTabChange}
         onOpenSearch={() => setIsSearchModalOpen(true)}
         onOpenWallet={() => setIsWalletModalOpen(true)}
-        onOpenDocs={() => setIsDocsModalOpen(true)}
+        onOpenDocs={handleOpenDocs}
         connectedWallet={connectedWallet}
         onDisconnectWallet={() => setConnectedWallet(null)}
       />
@@ -216,7 +220,7 @@ export default function App() {
       {isLandingView ? (
         <MorphexHero
           onLaunchApp={handleLaunchApp}
-          onOpenDocs={() => setIsDocsModalOpen(true)}
+          onOpenDocs={handleOpenDocs}
         />
       ) : (
         <div className="min-h-[calc(100vh-56px)] flex flex-col justify-between">
@@ -357,11 +361,6 @@ export default function App() {
         isOpen={isSearchModalOpen}
         onClose={() => setIsSearchModalOpen(false)}
         onSelectToken={handleGlobalSelectToken}
-      />
-
-      <DocsModal
-        isOpen={isDocsModalOpen}
-        onClose={() => setIsDocsModalOpen(false)}
       />
     </div>
   );

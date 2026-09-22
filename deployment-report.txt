@@ -1,0 +1,178 @@
+================================================================================
+MORPHEX PROTOCOL — COMPREHENSIVE DEPLOYMENT & SYSTEM AUDIT REPORT
+Generated: 2026-09-22
+================================================================================
+
+1. EXECUTIVE SUMMARY
+--------------------------------------------------------------------------------
+- Reported Issue: Deposits of public USDT into the RelayerVault on Sepolia were
+  completed, but corresponding confidential cUSDT was not visible and the
+  relayer bot deployed on Render was not listening/processing the deposits.
+- Resolution Performed:
+  * Ran an on-chain audit of all deposit events on Sepolia RelayerVault.
+  * Identified 4 unfulfilled deposits (totaling 20 USDT) that had not been minted.
+  * Successfully generated Zama FHE encrypted proofs and called relayerMint on
+    cUSDT for all 4 deposits.
+  * All 6 deposits (26 USDT total) are now 100% minted on Sepolia.
+
+
+2. SMART CONTRACT REGISTRY
+--------------------------------------------------------------------------------
+A. SEPOLIA TESTNET (PRODUCTION / LIVE)
+   Chain ID: 11155111
+   Config File: frontend/.env.production
+
+   - Relayer & Deployer EOA:
+     0x00ea78522B3192f9b766795EcBF1030970aBBeb9 (Balance: 5.01 ETH)
+     Explorer: https://sepolia.etherscan.io/address/0x00ea78522B3192f9b766795EcBF1030970aBBeb9
+
+   - RelayerVault (Public Custody):
+     0xC4bA1f3Eb15914364cA9b6c7d03c313A5188751c
+     Explorer: https://sepolia.etherscan.io/address/0xC4bA1f3Eb15914364cA9b6c7d03c313A5188751c
+
+   - ConfidentialPairFactory:
+     0x4D7e17Cd6Ccd9a642b1Baf3E021768451801b5A6
+     Explorer: https://sepolia.etherscan.io/address/0x4D7e17Cd6Ccd9a642b1Baf3E021768451801b5A6
+
+   - ConfidentialPair (cUSDT / cUSDC AMM):
+     0x36b68a6647a8700858f9a877dfc4Aac8e853208D
+     Explorer: https://sepolia.etherscan.io/address/0x36b68a6647a8700858f9a877dfc4Aac8e853208D
+
+   - Confidential Tether (cUSDT - ERC-7984 / fhEVM):
+     0x3706770ef6A1AE0Ff0fB5Df09cC2f891300EEc37
+     Explorer: https://sepolia.etherscan.io/address/0x3706770ef6A1AE0Ff0fB5Df09cC2f891300EEc37
+
+   - Confidential USD Coin (cUSDC - ERC-7984 / fhEVM):
+     0x79311C0A4827F5B70d6569787c59aBF980D38114
+     Explorer: https://sepolia.etherscan.io/address/0x79311C0A4827F5B70d6569787c59aBF980D38114
+
+   - Public Backing USDT (MockERC20, 6 decimals):
+     0x4b29D03952F15D89EB458aF461b55C51faCE1357
+     Explorer: https://sepolia.etherscan.io/address/0x4b29D03952F15D89EB458aF461b55C51faCE1357
+
+   - Public Backing USDC (MockERC20, 6 decimals):
+     0xc0500be2602B03BE6a5bb97Ae0f052C6fBA7C0D3
+     Explorer: https://sepolia.etherscan.io/address/0xc0500be2602B03BE6a5bb97Ae0f052C6fBA7C0D3
+
+   Note: Signer 0x00ea78522B3192f9b766795EcBF1030970aBBeb9 has been verified
+   on-chain to possess RELAYER_ROLE on both cUSDT and cUSDC.
+
+B. LOCAL HARDHAT NETWORK (DEVELOPMENT)
+   Chain ID: 31337 (Localhost:8545)
+   Config File: frontend/.env.local
+
+   - RelayerVault:           0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0
+   - ConfidentialPairFactory: 0x8A791620dd6260079BF849Dc5567aDC3F2FdC318
+   - Pair (cUSDT/cUSDC):     0x8aCd85898458400f7Db866d53FCFF6f0D49741FF
+   - Confidential cUSDT:     0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
+   - Confidential cUSDC:     0x0165878A594ca255338adfa4d48449f69242Eb8F
+   - Public USDT:            0x5FbDB2315678afecb367f032d93F642f64180aa3
+   - Public USDC:            0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512
+
+
+3. DEPOSIT AUDIT & FULFILLMENT VERIFICATION (SEPOLIA)
+--------------------------------------------------------------------------------
+Audit Window: Blocks 11739152 -> 11759152
+
+Deposit 1:
+- Deposit Tx: 0xf0aa142aee865ebd1212482823fec51dd6f69d617c74140dc580a913d1718b9a
+- Block: 11752486 | Amount: 1.0 USDT
+- Mint Tx: https://sepolia.etherscan.io/tx/0x95bae1b2bdcba40803a9d162307fb24a29939f0f7d23bb92419355965eaa9fa2
+- Status: FULFILLED
+
+Deposit 2:
+- Deposit Tx: 0xbd546af4e42c19042b4177352e6532bcfc364da2e74e90a13a9332bb4a65dcce
+- Block: 11752886 | Amount: 2.0 USDT
+- Status: FULFILLED (Previously minted)
+
+Deposit 3:
+- Deposit Tx: 0x673ace8ac1a5a864a6c227aa57af80aa42e0b0a0edf86a792c8f608a2ca2b1e9
+- Block: 11753022 | Amount: 4.0 USDT
+- Status: FULFILLED (Previously minted)
+
+Deposit 4:
+- Deposit Tx: 0xb9cdc22729934fb95c6cc9c2c339f92b7815dc1014e7e1e2831e7f783e2af34f
+- Block: 11753130 | Amount: 12.0 USDT
+- Mint Tx: https://sepolia.etherscan.io/tx/0x40a632ffca70563dbbed19e7ca721354deb31712d66f8b2de3481392ce4fff75
+- Status: FULFILLED
+
+Deposit 5:
+- Deposit Tx: 0x0bfd349a54ca7500633a277e35a79fa9f8a08e5c0da01462482a14a77877291e
+- Block: 11753136 | Amount: 3.0 USDT
+- Mint Tx: https://sepolia.etherscan.io/tx/0xc78eac94579d35becd00a38fbec3d4b19f2263038bf0b8ceb7c4c7b7b1bc00c7
+- Status: FULFILLED
+
+Deposit 6:
+- Deposit Tx: 0x308f13c93d0ec2ff498cd00fdf9e26eeabc83a08e1d06435598b0e23ac2750a6
+- Block: 11759118 | Amount: 4.0 USDT
+- Mint Tx: https://sepolia.etherscan.io/tx/0x93e26d5c87526a784d6b4f2166d6dff5917764db974a65f715603a98e4165713
+- Status: FULFILLED
+
+
+4. ROOT CAUSE ANALYSIS: WHY RENDER BOT DID NOT PROCESS DEPOSITS
+--------------------------------------------------------------------------------
+1. MISSING PRIVATE_KEY IN RENDER ENVIRONMENT:
+   .env is in .gitignore, so Render builds without your local .env. In
+   hardhat.config.ts, when PRIVATE_KEY is undefined, Hardhat defaults to a mock
+   mnemonic whose address (0xf39F...) does not own RELAYER_ROLE on Sepolia.
+   As a result, the daemon logs '[SKIP] Signer lacks RELAYER_ROLE' and rejects
+   all incoming deposits.
+
+2. RENDER FREE TIER IDLE SLEEP:
+   Render's free Web Services automatically shut down after 15 minutes of zero
+   inbound HTTP requests. While the script runs an HTTP health check on port
+   10000, Render requires external web traffic to remain active. Once asleep,
+   the daemon stops polling Sepolia blocks.
+
+3. 500 BLOCK SEARCH WINDOW LIMIT:
+   In scripts/relayer-daemon.ts:
+   `vault.queryFilter(filter, Math.max(0, currentBlock - 500))`
+   500 blocks on Sepolia equals ~100 minutes. If Render restarts or wakes up
+   after being idle, any deposit older than 100 minutes is permanently excluded
+   from the query filter.
+
+4. COMMAND TYPOS / INVOCATION SYNTAX:
+   The command `npx relayer:demon` triggers an npm error (EUNSUPPORTEDPROTOCOL).
+   The correct start command is: `npm run relayer:daemon`.
+
+
+5. WHY cUSDT WAS NOT VISIBLE IN FRONTEND
+--------------------------------------------------------------------------------
+1. ENCRYPTED BALANCE (ERC-7984):
+   Unlike standard ERC-20 tokens, confidential tokens store balances as
+   encrypted 32-byte ciphertext handles (confidentialBalanceOf). MetaMask and
+   Etherscan cannot show standard numerical balances.
+
+2. EIP-712 DECRYPTION SIGNATURE:
+   In the Morphex UI, the user must connect their wallet and sign an EIP-712
+   typed data authorization message, allowing the Zama KMS web client to decrypt
+   and display the plaintext number.
+
+3. LOCALHOST VS SEPOLIA ENV CONFLICT:
+   Running `npm run deploy:relayer-local` overwrote `frontend/.env.local` with
+   Chain ID 31337 (Localhost) and local contract addresses. Because Vite
+   prioritizes .env.local over .env.production, local dev servers were
+   querying the Hardhat local node instead of Sepolia.
+
+
+6. PRODUCTION RENDER CONFIGURATION GUIDE
+--------------------------------------------------------------------------------
+To run the relayer daemon continuously on Render:
+
+A. Service Settings:
+   - Type: Background Worker (recommended) or Web Service
+   - Build Command: npm install
+   - Start Command: npm run relayer:daemon
+
+B. Environment Variables in Render Dashboard:
+   PRIVATE_KEY=0x3b609d64c406760355ebf32515631c398784dba8e023ee11aa98100a85712d22
+   SEPOLIA_RPC_URL=https://ethereum-sepolia.publicnode.com
+   PORT=10000
+   VITE_RELAYER_VAULT_ADDRESS=0xC4bA1f3Eb15914364cA9b6c7d03c313A5188751c
+   VITE_PUBLIC_TOKEN_LIST=[{"symbol":"USDT","name":"Tether","address":"0x4b29D03952F15D89EB458aF461b55C51faCE1357"},{"symbol":"USDC","name":"USD Coin","address":"0xc0500be2602B03BE6a5bb97Ae0f052C6fBA7C0D3"}]
+   VITE_TOKEN_LIST=[{"name":"Confidential Tether","symbol":"cUSDT","address":"0x3706770ef6A1AE0Ff0fB5Df09cC2f891300EEc37"},{"name":"Confidential USD Coin","symbol":"cUSDC","address":"0x79311C0A4827F5B70d6569787c59aBF980D38114"}]
+
+C. Keep-Alive (if using free Web Service):
+   Set up a free monitor (e.g. UptimeRobot) pinging the Render service URL
+   every 5-10 minutes to prevent the container from idling to sleep.
+================================================================================

@@ -19,7 +19,7 @@ interface NavbarProps {
   onTabChange: (tab: ActiveNavTab) => void;
   onOpenSearch: () => void;
   onOpenWallet: () => void;
-  onOpenDocs: () => void;
+  onOpenDocs?: () => void;
   connectedWallet: string | null;
   onDisconnectWallet: () => void;
 }
@@ -94,13 +94,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             );
           })}
-          <button
-            onClick={onOpenDocs}
+          <a
+            id="nav-docs-btn"
+            href="https://srm-a9eb4485.mintlify.site/index"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => onOpenDocs?.()}
             className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-[#4B5563] hover:text-[#192837] hover:bg-white/80 transition-all duration-200 cursor-pointer flex items-center gap-1"
           >
             <span>Docs</span>
             <BookOpen className="w-3 h-3 text-[#9CA3AF]" />
-          </button>
+          </a>
         </nav>
       </div>
 
@@ -229,16 +233,20 @@ export const Navbar: React.FC<NavbarProps> = ({
               {tab.label}
             </button>
           ))}
-          <button
+          <a
+            id="mobile-nav-docs-btn"
+            href="https://srm-a9eb4485.mintlify.site/index"
+            target="_blank"
+            rel="noopener noreferrer"
             onClick={() => {
               setShowMobileNav(false);
-              onOpenDocs();
+              onOpenDocs?.();
             }}
-            className="p-2.5 rounded-xl text-left font-semibold text-xs text-[#4B5563] hover:bg-gray-100 flex items-center justify-between"
+            className="p-2.5 rounded-xl text-left font-semibold text-xs text-[#4B5563] hover:bg-gray-100 flex items-center justify-between cursor-pointer"
           >
             <span>Docs</span>
             <BookOpen className="w-3.5 h-3.5 text-[#9CA3AF]" />
-          </button>
+          </a>
         </div>
       )}
     </header>
