@@ -1,5 +1,16 @@
 import { ethers, fhevm } from "hardhat";
 import { promises as fs } from "node:fs";
+import http from "node:http";
+
+const port = Number(process.env.PORT) || 10000;
+const host = "0.0.0.0";
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Morphex Relayer Bot is healthy and running\n");
+});
+server.listen(port, host, () => {
+  console.log(`Relayer health check server listening on ${host}:${port}`);
+});
 
 const PROCESSED_FILE = ".relayer-processed.json";
 
@@ -28,18 +39,31 @@ async function main() {
   console.log("==================================================");
   console.log(`Relayer: ${relayer.address}`);
 
-  const envContent = await fs.readFile("frontend/.env.local", "utf8");
-  const vaultMatch = envContent.match(/VITE_RELAYER_VAULT_ADDRESS=(0x[a-fA-F0-9]+)/);
-  const publicTokensMatch = envContent.match(/VITE_PUBLIC_TOKEN_LIST=(\[.*\])/);
-  const confidentialTokensMatch = envContent.match(/VITE_TOKEN_LIST=(\[.*\])/);
+  let vaultAddress = process.env.VITE_RELAYER_VAULT_ADDRESS || process.env.RELAYER_VAULT_ADDRESS;
+  let publicTokens = process.env.VITE_PUBLIC_TOKEN_LIST ? JSON.parse(process.env.VITE_PUBLIC_TOKEN_LIST) : null;
+  let confidentialTokens = process.env.VITE_TOKEN_LIST ? JSON.parse(process.env.VITE_TOKEN_LIST) : null;
 
-  if (!vaultMatch || !publicTokensMatch || !confidentialTokensMatch) {
-    throw new Error("Missing contract addresses in frontend/.env.local");
+  if (!vaultAddress || !publicTokens || !confidentialTokens) {
+    const envPaths = ["frontend/.env.production", "frontend/.env.local", ".env"];
+    for (const p of envPaths) {
+      try {
+        const envContent = await fs.readFile(p, "utf8");
+        const vaultMatch = envContent.match(/VITE_RELAYER_VAULT_ADDRESS=(0x[a-fA-F0-9]+)/);
+        const publicTokensMatch = envContent.match(/VITE_PUBLIC_TOKEN_LIST=(\[.*\])/);
+        const confidentialTokensMatch = envContent.match(/VITE_TOKEN_LIST=(\[.*\])/);
+
+        if (vaultMatch && !vaultAddress) vaultAddress = vaultMatch[1];
+        if (publicTokensMatch && !publicTokens) publicTokens = JSON.parse(publicTokensMatch[1]);
+        if (confidentialTokensMatch && !confidentialTokens) confidentialTokens = JSON.parse(confidentialTokensMatch[1]);
+      } catch {
+        // Continue searching other files
+      }
+    }
   }
 
-  const vaultAddress = vaultMatch[1];
-  const publicTokens = JSON.parse(publicTokensMatch[1]);
-  const confidentialTokens = JSON.parse(confidentialTokensMatch[1]);
+  if (!vaultAddress || !publicTokens || !confidentialTokens) {
+    throw new Error("Missing contract addresses (VITE_RELAYER_VAULT_ADDRESS, VITE_PUBLIC_TOKEN_LIST, VITE_TOKEN_LIST) in environment or env files");
+  }
 
   const vault = await ethers.getContractAt("RelayerVault", vaultAddress, relayer);
 
